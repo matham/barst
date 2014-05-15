@@ -27,10 +27,10 @@
     <ClInclude Include="Barst DLL.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="cpl defs.h">
+    <ClInclude Include="..\Barst\cpl defs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="misc tools.h">
+    <ClInclude Include="..\Barst\misc tools.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -44,7 +44,7 @@
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="misc tools.cpp">
+    <ClCompile Include="..\Barst\misc tools.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
