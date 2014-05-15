@@ -128,6 +128,12 @@ void CManagerSerial::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 			m_acSerialDevices[((SBaseIn*)pHead)->nChan]= NULL;
 			sBase.nChan= ((SBaseIn*)pHead)->nChan;
 		}
+	} else if (dwSize == sizeof(SBaseIn) && ((SBaseIn*)pHead)->eType == eVersion && 
+		((SBaseIn*)pHead)->nChan == -1)
+	{
+		sBase.nError= 0;
+		sBase.dwInfo= GetVersion();
+		sBase.eType= eVersion;
 	} else if (((SBaseIn*)pHead)->eType == eSet && 
 		((SBaseIn*)pHead)->dwSize == sizeof(SBaseIn)+sizeof(SBase)+sizeof(SChanInitSerial) && 
 		((SBase*)((char*)pHead+sizeof(SBaseIn)))->eType == eSerialChanInit)	// set a channel
@@ -604,7 +610,7 @@ DWORD CChannelSerial::ThreadProc()
 			break;
 		}
 
-		if (bRClear)									// respond to client, only from writes
+		if (bRClear)									// respond to client, only from reads
 		{
 			sPacket= m_asRPackets.Front(true, bValid);
 			if (m_asRPackets.GetSize())

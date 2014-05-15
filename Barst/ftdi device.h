@@ -73,12 +73,12 @@ public:
 
 	// channles init data
 	const FT_DEVICE_LIST_INFO_NODE	m_FTInfo;
-	const SChanInitFTDI				m_sChanInit;
 	const std::tstring				m_csPipeName;
 	const int						m_nChan;
 private:
 	FT_HANDLE						m_ftHandle;	// ft_handle to the channel
 	std::vector<CPeriphFTDI*>		m_aDevices;	// list of all the subdevices. index is channel number
+	SChanInitFTDI					m_sChanInit;
 
 
 	HANDLE					m_hStop;	// stops the thread
@@ -118,7 +118,8 @@ class CPeriphFTDI : public CDevice
 {
 public:
 	/** szName is the unique device name. sInitFT is the init for this device. */
-	CPeriphFTDI(const TCHAR szName[], const SInitPeriphFT &sInitFT) : CDevice(szName), m_sInitFT(sInitFT){};
+	CPeriphFTDI(const TCHAR szName[], const SInitPeriphFT &sInitFT) : CDevice(szName), m_sInitFT(sInitFT),
+		m_ucBitOutput(sInitFT.ucBitOutput){};
 	virtual ~CPeriphFTDI(){};
 	/** The FTDI thread calls this function on all the devices everytime a read/write occurs. However,
 		devices only do something if they are active or are in/activated by the this call. This is called
@@ -141,16 +142,27 @@ public:
 	virtual void Result(void *pHead, bool bPass)= 0;
 	virtual EStateFTDI GetState()= 0;	// returns if we're active/inactive etc.
 	virtual DWORD GetInfo(void* pHead, DWORD dwSize)= 0;
+	void SetOutputBits(unsigned char ucBitOutput) {m_ucBitOutput = ucBitOutput;}
+	unsigned char GetOutputBits() {return m_ucBitOutput;}
 
 	const SInitPeriphFT		m_sInitFT;
 protected:
 	EStateFTDI		m_eState;	// current device state
 	CTimer*			m_pcTimer;	// timer of device.
+	unsigned char	m_ucBitOutput;	// current bits set as output
 };
 
 
 /** defines the ADC device that can be attched to the FTDI bus. */
 #define ADC_P	_T("ADCBrd")
+#define ADC_RESET_DELAY 5000
+enum EHandshakeADC {
+	eConfigStart,
+	eConfigTO,
+	eConfigClkToggle,
+	eConfigWrite,
+	eConfigDone,
+};
 class CADCPeriph : public CPeriphFTDI
 {
 public:
@@ -167,13 +179,18 @@ public:
 
 	const SADCInit			m_sInit;
 	const unsigned char		m_ucMask;	// flipped
-	const unsigned char		m_ucDefault;
+	const unsigned char		m_ucConfigWriteBit;
+	const unsigned char		m_ucConfigReadBit;
+	const unsigned char		m_ucReverse;	// 1 if reverse, 0 otherwise
+	const unsigned char		m_ucDefault;	// default state of the pins (high/low)
+	const unsigned short	m_usConfigWord;
 	const unsigned char		m_ucTransPerByte;
+	const unsigned char		m_ucNGroups;	// number of transections it takes to get a data set (cycle)
+	const unsigned char		m_ucNBytes;		// number of bytes sent in a data set
 private:
 	void ExtractData();
 	DWORD					m_dwRestartE;
-	bool					m_bPreparing;
-	bool					m_bFirstPrepare;
+	EHandshakeADC			m_eConfigState;
 	SData					m_sData;
 
 	HANDLE					m_hThread;
@@ -187,7 +204,12 @@ private:
 	CRITICAL_SECTION		m_hStateSafe;
 	__int64					m_llId;
 
-	DWORD					m_dwDataCount;
+	DWORD					m_dwDataCount;	// count of packets since start of now transection cycle
+	char					m_cDataOffset;	// number of cycles into m_aucBuff multiplied my m_ucNBytes
+	char					m_cBuffSize;
+	unsigned char*			m_aucBuff;
+	unsigned short			(*m_aucDecoded)[256];
+	unsigned char			m_aucGroups[16];	// sending 2 bits at a time w/ 4 bytes per ADC point = max 16 groups
 	unsigned char			m_ucFlags;
 	unsigned short			m_usBadRead;
 	unsigned short			m_usOverflow;
@@ -198,13 +220,13 @@ private:
 	DWORD*					m_adwData;
 	bool					m_bSecond;
 	DWORD					m_dwPos;
-	float					m_fSpaceFull;
+	DWORD					m_dwSpaceUsed;
 	float					m_fTimeWorked;
-	float					m_fDataRate;
+	DWORD					m_dwStartRead;
 	double					m_dTimeTemp;
 	double					m_dTimeS;
 
-	unsigned char			m_ucLastByte;
+	//unsigned char			m_ucLastByte;
 };
 
 /** Defines a serial in parallel out shift register that the FTDI channel can write to. */

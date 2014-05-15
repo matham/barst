@@ -1,10 +1,13 @@
 
 #include "cpl defs.h"
 #include "ftdi device.h"
+#if _DEBUG
+#include <iostream>
+#include <fstream>
+std::ofstream s_log_file;
+#endif
 
-
-
-static const unsigned char BitReverseTable256[] = 
+static const unsigned char s_aucBitReverseTable256[] = 
 {
   0x00, 0x80, 0x40, 0xC0, 0x20, 0xA0, 0x60, 0xE0, 0x10, 0x90, 0x50, 0xD0, 0x30, 0xB0, 0x70, 0xF0, 
   0x08, 0x88, 0x48, 0xC8, 0x28, 0xA8, 0x68, 0xE8, 0x18, 0x98, 0x58, 0xD8, 0x38, 0xB8, 0x78, 0xF8, 
@@ -25,7 +28,6 @@ static const unsigned char BitReverseTable256[] =
 };
 
 
-
 /////////////////////////////////////////////////
 // Starting point of queue thread
 DWORD WINAPI ADCProc(LPVOID lpParameter)
@@ -35,13 +37,18 @@ DWORD WINAPI ADCProc(LPVOID lpParameter)
 }
 
 
-
-
 CADCPeriph::CADCPeriph(const SADCInit &sADCInit, CComm *pcComm, const SInitPeriphFT &sInitFT, 
-	HANDLE hNewData, int &nError, CTimer* pcTimer) : 
+	HANDLE hNewData, int &nError, CTimer* pcTimer):
 	CPeriphFTDI(ADC_P, sInitFT), 
-	m_sInit(sADCInit), m_ucDefault(1<<sADCInit.ucClk), m_ucMask(~(1<<sADCInit.ucClk|0xFF<<sADCInit.ucLowestDataBit)),
-	m_ucTransPerByte(8/(8-sADCInit.ucLowestDataBit)), m_hNext(hNewData)
+	m_sInit(sADCInit), m_ucDefault(1 << sADCInit.ucClk), m_ucMask(~(1 << sADCInit.ucClk|((0xFF << sADCInit.ucLowestDataBit) &
+	(0xFF >> (6 - sADCInit.ucLowestDataBit - sADCInit.ucDataBits))))),
+	m_ucConfigWriteBit(1 << (sADCInit.bReverseBytes?sADCInit.ucLowestDataBit:sADCInit.ucLowestDataBit+1+sADCInit.ucDataBits)),
+	m_ucConfigReadBit(sADCInit.bReverseBytes?(m_ucConfigWriteBit << 1):(m_ucConfigWriteBit >> 1)), m_ucReverse(sADCInit.bReverseBytes?1:0),
+	m_usConfigWord((((sADCInit.bChop?0x80:0) | (sADCInit.ucRateFilter & 0x7F)) << 8) | (sADCInit.ucDataBits+1) << 5
+	| (sADCInit.ucBitsPerData == 24?0x10:0) | (sADCInit.bChan2?0x8:0) | (sADCInit.bChan1?0x4:0) | (sADCInit.ucInputRange & 0x3)),
+	m_ucTransPerByte(0), m_hNext(hNewData),
+	m_ucNGroups(((sADCInit.ucDataBits==0) | (sADCInit.ucDataBits==2) | (sADCInit.ucDataBits==6))?(m_sInit.ucBitsPerData/8+1)*8/(sADCInit.ucDataBits+2):8),
+	m_ucNBytes(((sADCInit.ucDataBits==0) | (sADCInit.ucDataBits==2) | (sADCInit.ucDataBits==6))?(m_sInit.ucBitsPerData/8 + 1):(sADCInit.ucDataBits + 2))
 {
 	nError= 0;
 	m_bError= true;
@@ -56,10 +63,11 @@ CADCPeriph::CADCPeriph(const SADCInit &sADCInit, CComm *pcComm, const SInitPerip
 	InitializeCriticalSection(&m_hStateSafe);
 	// assumption is that the ADC buffer length is the one that makes dwBuff largest, i.e. ADC buffer is always
 	// equal to dwBuff
-	if ((m_sInit.ucLowestDataBit != 6 && m_sInit.ucLowestDataBit != 4) || !pcComm || 
-		(m_sInitFT.dwBuff%510 && m_sInitFT.dwBuff%62) || m_sInit.ucBitsPerData%8 || m_sInit.ucBitsPerData>24 ||
-		(m_sInit.bChan2 && !m_sInit.bStatusReg) || m_sInitFT.dwMinSizeR != m_sInitFT.dwBuff ||
-		m_sInitFT.dwMinSizeW != m_sInitFT.dwBuff || !pcComm || !pcTimer || !hNewData)
+	if (!pcComm || (m_sInitFT.dwBuff%510 && m_sInitFT.dwBuff%62) ||
+		(m_sInit.ucBitsPerData != 16 && m_sInit.ucBitsPerData != 24) ||
+		(!m_sInit.bStatusReg) || m_sInitFT.dwMinSizeR != m_sInitFT.dwBuff ||
+		m_sInitFT.dwMinSizeW != m_sInitFT.dwBuff || !pcTimer || !hNewData || (!m_sInit.bChan1 && !m_sInit.bChan2)
+		|| m_sInit.ucDataBits > 6)
 	{
 		nError= BAD_INPUT_PARAMS;
 		return;
@@ -74,7 +82,7 @@ CADCPeriph::CADCPeriph(const SADCInit &sADCInit, CComm *pcComm, const SInitPerip
 		nError= NO_SYS_RESOURCE;
 		return;
 	}
-	m_psDataHeader= (SADCData*) m_pcMemPool->PoolAcquire(sizeof(SADCData)+sizeof(DWORD)*sADCInit.dwDataPerTrans*(sADCInit.bChan2?2:1));
+	m_psDataHeader= (SADCData*) m_pcMemPool->PoolAcquire(sizeof(SADCData)+sizeof(DWORD)*sADCInit.dwDataPerTrans*((sADCInit.bChan1 && sADCInit.bChan2)?2:1));
 	if (!m_psDataHeader)
 	{
 		nError= NO_SYS_RESOURCE;
@@ -88,19 +96,19 @@ CADCPeriph::CADCPeriph(const SADCInit &sADCInit, CComm *pcComm, const SInitPerip
 	}
 
 	m_psDataHeader->dwPos= 0;
-	m_psDataHeader->dwChan2Start= sADCInit.dwDataPerTrans;
+	m_psDataHeader->dwChan2Start = sADCInit.bChan1?sADCInit.dwDataPerTrans:0;
 	m_psDataHeader->dwCount1= 0;
 	m_psDataHeader->dwCount2= 0;
 	m_psDataHeader->dwChan1S= 0;
 	m_psDataHeader->dwChan2S= 0;
-	m_psDataHeader->sDataBase.dwSize=sizeof(SADCData)+sizeof(DWORD)*sADCInit.dwDataPerTrans*(sADCInit.bChan2?2:1);
+	m_psDataHeader->sDataBase.dwSize=sizeof(SADCData)+sizeof(DWORD)*sADCInit.dwDataPerTrans*((sADCInit.bChan1 && sADCInit.bChan2)?2:1);
 	m_psDataHeader->sDataBase.eType= eTrigger;
 	m_psDataHeader->sDataBase.nChan= m_sInitFT.nChan;
-	m_psDataHeader->sBase.dwSize= sizeof(SADCData)+sizeof(DWORD)*sADCInit.dwDataPerTrans*(sADCInit.bChan2?2:1)-sizeof(SBaseIn);
+	m_psDataHeader->sBase.dwSize= sizeof(SADCData)+sizeof(DWORD)*sADCInit.dwDataPerTrans*((sADCInit.bChan1 && sADCInit.bChan2)?2:1)-sizeof(SBaseIn);
 	m_psDataHeader->sBase.eType= eADCData;
 	m_psDataHeader->dStartTime= 0;
 	m_adwData= (DWORD*)((unsigned char*)m_psDataHeader+sizeof(SADCData));
-	m_bPreparing= false;
+	m_eConfigState = eConfigDone;
 	m_bSecond= false;
 	m_llId= -1;	// so that if we send to closed comm unlikly to have this chann open
 	m_dwDataCount= 0;
@@ -110,7 +118,54 @@ CADCPeriph::CADCPeriph(const SADCInit &sADCInit, CComm *pcComm, const SInitPerip
 	m_eState= eInactivateState;
 	m_dwPos= 0;
 	m_sData.pDevice= this;
-	m_sData.dwSize= sizeof(SADCData)+sizeof(DWORD)*m_sInit.dwDataPerTrans*(m_sInit.bChan2?2:1);
+	m_sData.dwSize= sizeof(SADCData)+sizeof(DWORD)*m_sInit.dwDataPerTrans*((sADCInit.bChan1 && sADCInit.bChan2)?2:1);
+	m_aucDecoded = (unsigned short(*)[256])m_pcMemPool->PoolAcquire(sizeof(*m_aucDecoded)*m_ucNGroups);
+	unsigned __int64 llTemp;
+	unsigned char ucTemp;
+	char cShift;
+	// we filter out the data ports, align it to the MSB of the 64 bit int and add it
+	// into a short which will be or'd with a 64 bit int when reconstructing.
+	// m_aucGroups says how far from the start (LSB, 0th byte) of the 8 byte we
+	// or the short with. Highest is 6 and it goes down.
+	// for negative values we never use i that high anyway when recosntructing. e.g. if ucDataBits + 2 = 8
+	// then 6 - 7*8/8 == -1, but when recosntructing max i is 4.
+	// Data is sent from ADC MSB first.
+	for (char i = 0; i<m_ucNGroups; ++i)
+		if (i*(m_sInit.ucDataBits + 2)/8 > m_ucNBytes - 2)
+			m_aucGroups[i] = 0;
+		else
+			m_aucGroups[i] = m_ucNBytes - 2 - i*(m_sInit.ucDataBits + 2)/8;
+	for (unsigned short i = 0; i< 256; ++i)
+	{
+		ucTemp = (i & ~(m_ucMask | 1 << m_sInit.ucClk));
+		if (m_sInit.bReverseBytes)
+		{
+			cShift = m_sInit.ucLowestDataBit - (8 - (m_sInit.ucLowestDataBit + m_sInit.ucDataBits + 2));
+			ucTemp = cShift>=0 ? s_aucBitReverseTable256[ucTemp] << cShift: s_aucBitReverseTable256[ucTemp] >> -cShift;
+		}
+		ucTemp <<= 8 - (m_sInit.ucLowestDataBit + m_sInit.ucDataBits + 2);	// allign data at MSB
+		llTemp = (unsigned __int64)ucTemp << 8 * (m_ucNBytes - 1);	// shift it up to allign with MSB of num bytes
+		for (char j = 0; j<m_ucNGroups; ++j)
+		{
+			m_aucDecoded[j][i] = ((llTemp >> m_aucGroups[j] * 8) & 0xFFFF);
+			llTemp >>= m_sInit.ucDataBits + 2;
+		}
+	}
+	switch (sADCInit.ucDataBits)
+	{
+	case 0:
+	case 2:
+	case 6:
+		m_cBuffSize = m_ucNBytes;
+		break;
+	default:
+		m_cBuffSize = m_ucNBytes*(m_sInit.ucBitsPerData/8 + 1);
+		break;
+	}
+	m_aucBuff = (unsigned char*)m_pcMemPool->PoolAcquire(m_cBuffSize);
+	memset(m_aucBuff, 0, m_cBuffSize);
+	m_cDataOffset = m_ucNBytes * (m_cBuffSize / m_ucNBytes - 1);
+	//s_log_file.open("Birch log file.txt");
 };
 
 DWORD CADCPeriph::GetInfo(void* pHead, DWORD dwSize)
@@ -156,6 +211,7 @@ CADCPeriph::~CADCPeriph()
 	if (m_psDataHeader)
 		m_pcMemPool->PoolRelease(m_psDataHeader);
 	delete m_pcMemPool;
+	//s_log_file.close();
 }
 
 bool CADCPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFTDI eReason, int nError)
@@ -170,7 +226,9 @@ bool CADCPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFTD
 		m_eState= eActivateState;
 		SetEvent(m_hNext);	// make sure we keep writing even if user forgot to trigger (although we'll send data to -1 ID)
 		LeaveCriticalSection(&m_hStateSafe);
-		m_bPreparing= false;
+		if (m_sInit.bConfigureADC)
+			m_ucBitOutput = m_sInitFT.ucBitOutput | m_ucConfigWriteBit;
+		m_eConfigState = eConfigStart;
 		break;
 	case eInactivateState:
 		EnterCriticalSection(&m_hStateSafe);
@@ -183,68 +241,171 @@ bool CADCPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFTD
 		if (m_eState == eActive || m_eState == eActivateState)	// start over again
 		{
 			m_eState= eActivateState;
-			m_bPreparing= false;
+			m_eConfigState = eConfigStart;
+			m_ucBitOutput = m_sInitFT.ucBitOutput;
 		}
 		LeaveCriticalSection(&m_hStateSafe);
 		break;
 	case ePreWrite:
 		if (m_eState == eActivateState)
 		{
-			if (!m_bPreparing)	// start anew
+			switch (m_eConfigState)
 			{
-				SetEvent(m_hReset);
-				m_dwRestartE= GetTickCount()+5000;	// time when device finished reseting
-				m_bPreparing= true;
-				m_bFirstPrepare= true;	// the first time we clock out initialization seq so it can reset
-				DWORD i= 0;
-				for (; i<60; ++i)	// initialization seq, (keep in mind min packet is also 62)
+			case eConfigStart:
 				{
-					aucBuff[i++]= (aucBuff[i]&m_ucMask)|m_ucDefault;
-					aucBuff[i]= aucBuff[i]&m_ucMask;
+				SetEvent(m_hReset);
+				m_dwRestartE= GetTickCount() + ADC_RESET_DELAY;	// time when device should finish reseting
+				// the first time we clock out initialization seq so it can reset
+				DWORD i = 0;
+				for (; i<90; ++i)
+				{
+					aucBuff[i++] = (aucBuff[i] & m_ucMask) | m_ucDefault | m_ucConfigWriteBit;
+					aucBuff[i] = (aucBuff[i] & m_ucMask) | m_ucConfigWriteBit;
 				}
 				for (; i<m_sInitFT.dwBuff;++i)
-					aucBuff[i]= (aucBuff[i]&m_ucMask)|m_ucDefault;
-			} else	// in the middle of preparing
-			{
-				if (m_dwRestartE > GetTickCount())	// middle of reset
+					aucBuff[i]= (aucBuff[i]&m_ucMask) | m_ucDefault | m_ucConfigWriteBit;
+				break;
+				}
+			case eConfigWrite:
 				{
-					if (m_bFirstPrepare)	// the first time remove initialization seq so it can reset
-					{
-						for (int i= 0; i<60;++i)
-							aucBuff[i]= (aucBuff[i]&m_ucMask)|m_ucDefault;
-						m_bFirstPrepare= false;
-					}
-				} else	// ready
+				DWORD i = 0;
+				for (; i<90; ++i)	// initialization seq, (keep in mind min packet is also 3*62)
 				{
-					for (DWORD i= 0; i<m_sInitFT.dwBuff-2;++i)
-					{
-						aucBuff[i++]= (aucBuff[i]&m_ucMask)|m_ucDefault;
-						aucBuff[i]= aucBuff[i]&m_ucMask;
-					}
-					m_bPreparing= false;
-					EnterCriticalSection(&m_hStateSafe);
-					m_eState= eActive;
-					LeaveCriticalSection(&m_hStateSafe);
+					aucBuff[i++] = (aucBuff[i] & m_ucMask) | m_ucDefault | m_ucConfigWriteBit;
+					aucBuff[i] = (aucBuff[i] & m_ucMask) | m_ucConfigWriteBit;
+				}
+				aucBuff[90] = (aucBuff[90] & m_ucMask) | m_ucDefault | m_ucConfigWriteBit;
+				aucBuff[91] = (aucBuff[91] & m_ucMask) | m_ucDefault | m_ucConfigWriteBit;
+				for (DWORD i = 0; i<10; ++i)	
+				{
+					aucBuff[2*i + 92] = (aucBuff[2*i + 92] & m_ucMask) | m_ucDefault | m_ucConfigWriteBit;
+					aucBuff[2*i + 1 + 92] = (aucBuff[2*i + 1 + 92] & m_ucMask) | m_ucDefault;
+				}
+				aucBuff[112] = (aucBuff[112] & m_ucMask) | m_ucDefault | m_ucConfigWriteBit;
+				aucBuff[113] = (aucBuff[113] & m_ucMask) | m_ucDefault | m_ucConfigWriteBit;
+				char value;
+				for (DWORD i= 0; i<16; ++i)	
+				{
+					value = (m_usConfigWord & (1 << (15-i)))?m_ucConfigWriteBit:0;
+					aucBuff[3*i+114] = (aucBuff[3*i+114] & m_ucMask) | m_ucDefault | value;
+					aucBuff[3*i+1+114] = (aucBuff[3*i+1+114] & m_ucMask) | value;
+					aucBuff[3*i+2+114] = (aucBuff[3*i+2+114] & m_ucMask) | m_ucDefault | value;
+				}
+				break;
 				}
 			}
 		} else if (m_eState == eInactivateState)
 		{
-			m_bPreparing= false;
+			m_ucBitOutput = m_sInitFT.ucBitOutput;
+			m_eConfigState = eConfigDone;
 			SetEvent(m_hReset);
 			for (DWORD i= 0; i<m_sInitFT.dwBuff;++i)
 				aucBuff[i]= (aucBuff[i]&m_ucMask)|m_ucDefault;
 			EnterCriticalSection(&m_hStateSafe);
-			m_eState= eInactive;
+			m_eState = eInactive;
 			ResetEvent(m_hNext);	// stop R/W
 			LeaveCriticalSection(&m_hStateSafe);
 		} else  if (m_eState == eActive)
 		{
-			m_dTimeTemp= m_pcTimer->Seconds();	// get start time when we're about to read
+			m_dTimeTemp = m_pcTimer->Seconds();	// get start time when we're about to read
+		}
+		break;
+	case ePostWrite:
+		if (m_eState == eActivateState)
+		{
+			if (m_eConfigState == eConfigStart)
+			{
+				for (int i = 0; i<90; ++i)
+					aucBuff[i] = (aucBuff[i] & m_ucMask) | m_ucDefault | m_ucConfigWriteBit;
+				m_eConfigState = eConfigTO;
+			} else if (m_eConfigState == eConfigDone)
+			{
+				for (DWORD i= 0; i < m_sInitFT.dwBuff;++i)
+				{
+					aucBuff[i++] = (aucBuff[i] & m_ucMask) | m_ucDefault;
+					aucBuff[i] = aucBuff[i] & m_ucMask;
+				}
+				aucBuff[m_sInitFT.dwBuff-1] = (aucBuff[m_sInitFT.dwBuff-1] & m_ucMask) | m_ucDefault;
+			}
 		}
 		break;
 	case ePostRead:
-		if (m_eState == eActive)	// select which read buffer to use
+		if (m_eState == eActivateState)
 		{
+			switch (m_eConfigState)
+			{
+			case eConfigTO:
+				{
+				if (m_dwRestartE <= GetTickCount())
+				{
+					if (!m_sInit.bConfigureADC)
+						m_eConfigState = eConfigDone;
+					else
+						m_eConfigState = eConfigWrite;
+				}
+				break;
+				}
+			case eConfigWrite:
+				{
+				unsigned short usConfigWord = 0;
+				unsigned char * aucRx = ((SFTBufferSafe*)pHead)->aucBuff;
+				for (char i = 0; i < 16; ++i)
+					if (aucRx[3*i + 116] & m_ucConfigReadBit)
+						usConfigWord |= 1 << (15 - i);
+				if (usConfigWord != m_usConfigWord)
+					m_eConfigState = eConfigStart;
+				else
+					m_eConfigState = eConfigDone;
+				break;
+				}
+			case eConfigDone:
+				{
+				m_ucBitOutput = m_sInitFT.ucBitOutput;
+				m_cDataOffset = m_ucNBytes * (m_cBuffSize / m_ucNBytes - 1);
+				m_dwDataCount = 0;
+				m_dwSpaceUsed = 0;
+				m_dwStartRead = 0;
+				m_dwStartRead = GetTickCount();
+				EnterCriticalSection(&m_hStateSafe);
+				m_eState = eActive;
+				LeaveCriticalSection(&m_hStateSafe);
+				break;
+				}
+			}
+		} else if (m_eState == eActive)	// select which read buffer to use
+		{
+			/*aucBuff = ((SFTBufferSafe*)pHead)->aucBuff;
+			bool bLastDiff = false;
+			char c;
+			DWORD last_i = 0;
+			for (DWORD i = 1; i < m_sInitFT.dwBuff-1; ++i)
+			{
+				if ((aucBuff[i] & (1<<5)) != (aucBuff[i-1] & (1<<5)))
+				{
+					if (bLastDiff)
+					{
+						s_log_file << "\n";
+						bLastDiff = false;
+					}
+				} else
+					if ((aucBuff[i] & (1<<7)) && !(aucBuff[i-1] & (1<<7)))
+					{
+						if (!bLastDiff)
+							s_log_file << "\n";
+						bLastDiff = true;
+					}
+				c = aucBuff[i];
+				s_log_file <<((c&(1<<7))?"1":"0")<<" "<<((c&(1<<6))?"1":"0")<<((c&(1<<5))?"1":"0")<<((c&(1<<4))?"1":"0")<<((c&(1<<3))?"1":"0")\
+					<<" "<<((c&(1<<2))?"1":"0")<<((c&(1<<1))?"1":"0")<<((c&(1<<0))?"1":"0")<<\
+					(((aucBuff[i+1] & (1<<7)) && !(aucBuff[i] & (1<<7)) && (aucBuff[i+1] & (1<<6)) == (aucBuff[i] & (1<<6)) && (aucBuff[i+1] & (1<<5)) != (aucBuff[i] & (1<<5)))?"---------------------":"")<<"\n";
+				if (((aucBuff[i+1] & (1<<7)) && !(aucBuff[i] & (1<<7)) && (aucBuff[i+1] & (1<<6)) == (aucBuff[i] & (1<<6)) && (aucBuff[i+1] & (1<<5)) != (aucBuff[i] & (1<<5))))
+				{
+					s_log_file<<"\n"<<i-last_i<<"\n";
+					last_i = i;
+				}
+			}
+			s_log_file << "\n\n\n\n\n\n\n\n\n\n";
+			s_log_file.flush();*/
 			EnterCriticalSection(&m_hDataSafe);
 			m_psRx= (SFTBufferSafe*)pHead;
 			m_dTimeS= m_dTimeTemp;
@@ -341,26 +502,25 @@ DWORD CADCPeriph::ThreadProc()
 			dwMid= GetTickCount();
 			ExtractData();
 			dwEnd= GetTickCount();
+			m_dwAmountRead += m_psDataHeader->dwCount1+m_psDataHeader->dwCount2;
 			m_fTimeWorked= (float)((double)(dwEnd-dwMid)/(dwEnd-dwStart));
-			m_fSpaceFull= (float)((double)(m_dwAmountRead+m_psDataHeader->dwCount1+
-				m_psDataHeader->dwCount2-dwInitialRead)/(m_sInitFT.dwBuff/
-				(2*((m_sInit.ucBitsPerData/8+(m_sInit.bStatusReg?1:0))*m_ucTransPerByte+1))));
-			m_fDataRate= (float)((double)(m_dwAmountRead+m_psDataHeader->dwCount1+
-				m_psDataHeader->dwCount2-dwInitialRead)/(dwEnd-dwStart)*1000);
+			//m_fSpaceFull= (float)((double)(m_dwAmountRead-dwInitialRead)/(m_sInitFT.dwBuff/
+			//	(2*((m_sInit.ucBitsPerData/8+(m_sInit.bStatusReg?1:0))*m_ucTransPerByte+1))));
+			//m_fDataRate= (float)((double)(m_dwAmountRead-dwInitialRead)/(dwEnd-dwStart)*1000/((m_sInit.bChan1 && m_sInit.bChan2)?2:1));
 			break;
 		case WAIT_OBJECT_0 + 2:
 			m_psDataHeader->dwCount1= 0;
 			m_psDataHeader->dwCount2= 0;
-			m_fSpaceFull= 0;
+			m_dwSpaceUsed = 0;
 			m_fTimeWorked= 0;
-			m_fDataRate= 0;
+			//m_fDataRate= 0;
 			m_psDataHeader->ucError= 0;
 			m_psDataHeader->sDataBase.nError= 0;
 			m_dwDataCount= 0;
 			m_usBadRead= 0;
 			m_usOverflow= 0;
 			m_bSecond= false;
-			m_ucLastByte= 0xFF;
+			//m_ucLastByte= 0xFF;
 			ResetEvent(m_hReset);
 			break;
 		default:
@@ -376,136 +536,147 @@ void CADCPeriph::ExtractData()
 	if (m_bError)
 		return;
 	EnterCriticalSection(&m_hDataSafe);
-	unsigned char* rx= m_psRx->aucBuff-1;	// buffer was allocated with 2 bytes extra before this pointer
+	unsigned char* rx = m_psRx->aucBuff;	// buffer was allocated with 2 bytes extra before this pointer
 	// this will make sure the FTDI thread doesn't start using this buffer
 	// it doesn't make sure that we don't miss data if the FTDI thread has flown through these buffers before we start reading
-	CRITICAL_SECTION* psSafe= &m_psRx->sSafe;
-	m_psDataHeader->dStartTime= m_dTimeS;
+	CRITICAL_SECTION* psSafe = &m_psRx->sSafe;
+	m_psDataHeader->dStartTime = m_dTimeS;
 	ResetEvent(m_hProcessData);	// got the data
 	LeaveCriticalSection(&m_hDataSafe);
 	EnterCriticalSection(&m_hStateSafe);
-	__int64	llId= m_llId;	// get most recent ID
+	__int64	llId = m_llId;	// get most recent ID
 	LeaveCriticalSection(&m_hStateSafe);
 
-	m_psDataHeader->dwChan1S= m_psDataHeader->dwCount1;
-	m_psDataHeader->dwChan2S= m_psDataHeader->dwCount2;
-	const unsigned char ucData= 0xFF<<m_sInit.ucLowestDataBit;
-	const unsigned char ucShift= 8/m_ucTransPerByte;
-	rx[0]= m_ucLastByte;
+	m_psDataHeader->dwChan1S = m_psDataHeader->dwCount1;
+	m_psDataHeader->dwChan2S = m_psDataHeader->dwCount2;
+	unsigned char ucTemp1, ucTemp2;
 
 	EnterCriticalSection(psSafe);
 	// start at one since 1 has new clocked in data (read before write and last to writes are same)
-	for (DWORD i= 1; i<=m_sInitFT.dwBuff;)
+	for (DWORD i= 0; i<=m_sInitFT.dwBuff-1;++i)
 	{
+		++m_dwSpaceUsed;
 		// check if this is the start data signal
-		
-		if ((rx[i-1]&(0x80|1<<m_sInit.ucClk)) == 0 && ((rx[i-1]<<1&0x80)|(0x40|1<<m_sInit.ucClk)) == (rx[i]&(0xC0|1<<m_sInit.ucClk)))
+		if (!(rx[i]&1<<m_sInit.ucClk) && (unsigned char)(rx[i]&~(m_ucMask|m_ucConfigWriteBit)) == (unsigned char)(~rx[i+1]&~(m_ucMask|m_ucConfigWriteBit))
+			&& (rx[i] & m_ucConfigWriteBit) == (rx[i+1] & m_ucConfigWriteBit))
 		{
 			if (m_dwDataCount)	// if we're in the middle of another data segment bad read
-				++m_usBadRead;
-			m_dwDataCount= 0;
-		}
-		
-		if (m_dwDataCount == 0)	//	need to find data start signal
-		{
-			if ((rx[i-1]&(0x80|1<<m_sInit.ucClk)) == 0 && ((rx[i-1]<<1&0x80)|(0x40|1<<m_sInit.ucClk)) == (rx[i]&(0xC0|1<<m_sInit.ucClk)))
-			{	//found
-				if (rx[i]&0x80)			// get overflow flag
-					++m_usOverflow;
-				++m_dwDataCount;
-				m_ucFlags= 0;
-				m_dwTempData= 0;
-			}
-		} else if (m_sInit.bStatusReg && m_dwDataCount <= m_ucTransPerByte)	// read status register
-		{
-			if ( rx[i]&1<<m_sInit.ucClk && (rx[i]&(ucData|1<<m_sInit.ucClk)) == ((ucData|1<<m_sInit.ucClk)&~(rx[i-1]&(ucData|1<<m_sInit.ucClk))))
 			{
-				if (m_sInit.bReverseBytes)
-					m_ucFlags |= (rx[i-1]&ucData)>>(m_dwDataCount-1)*ucShift;
-				else
-					m_ucFlags |= (rx[i-1]&ucData)>>(m_ucTransPerByte-m_dwDataCount)*ucShift;
-				if (m_dwDataCount++ == m_ucTransPerByte)
+				++m_usBadRead;
+				m_dwDataCount = 0;
+			} else
+			{
+				memset(m_aucBuff+m_cDataOffset, 0, m_ucNBytes);
+				m_dwDataCount= 1;
+				*(unsigned short*)(m_aucBuff+m_aucGroups[0]+m_cDataOffset) = m_aucDecoded[0][rx[i]];
+			}
+			continue;
+		}
+		ucTemp1 = rx[i]&~m_ucMask;
+		ucTemp2 = rx[i+1]&~m_ucMask;
+		// if data was not changed or clock is high
+		if ((ucTemp1&~(1<<m_sInit.ucClk)) == (ucTemp2&~(1<<m_sInit.ucClk)) || ucTemp1&(1<<m_sInit.ucClk))
+			continue;
+		// haven't hit start or they are not complemented
+		if (!m_dwDataCount || ucTemp1 != (unsigned char)((~ucTemp2)&(~m_ucMask)))
+		{
+			++m_usBadRead;
+			m_dwDataCount = 0;
+			continue;
+		}
+		*(unsigned short*)(m_aucBuff+m_aucGroups[m_dwDataCount] + m_cDataOffset) |= m_aucDecoded[m_dwDataCount][rx[i]];
+		++m_dwDataCount;
+
+		if (m_dwDataCount == m_ucNGroups)
+		{
+			m_dwDataCount = 0;
+			m_cDataOffset -= m_ucNBytes;
+		}
+#pragma NOTE("m_aucBuff only works on little endian systems.")
+		const char cADCSize = m_sInit.ucBitsPerData/8 + 1;
+		unsigned char ucStatusReg;
+		DWORD dwDataPoint;
+		if (m_cDataOffset == -m_ucNBytes)	// we have a multiple of a full transection set
+		{
+			m_cDataOffset = m_ucNBytes * (m_cBuffSize / m_ucNBytes - 1);
+			for (char j = m_cBuffSize/cADCSize - 1; j >= 0; --j)
+			{
+				// full so send data
+				if (m_psDataHeader->dwCount1 == m_sInit.dwDataPerTrans || m_psDataHeader->dwCount2 == m_sInit.dwDataPerTrans)
 				{
-					if (m_sInit.bReverseBytes)
-						m_ucFlags= BitReverseTable256[m_ucFlags];
-					if (m_ucFlags&0xA0 || !(m_ucFlags&0x08))	// make sure the status register matches
+					m_psDataHeader->sDataBase.nError = m_usBadRead | (m_usOverflow<<16);
+					m_psDataHeader->dwPos= m_dwPos++;
+					m_dwAmountRead += m_psDataHeader->dwCount1+m_psDataHeader->dwCount2;
+					if (m_dwSpaceUsed)
+						m_psDataHeader->fSpaceFull = (m_psDataHeader->dwCount1 + m_psDataHeader->dwCount2) * cADCSize * 8 / (double)((m_sInit.ucDataBits + 2) * m_dwSpaceUsed);
+					else
+						m_psDataHeader->fSpaceFull = 0.0;
+					m_dwSpaceUsed = 0;
+					m_psDataHeader->fTimeWorked = m_fTimeWorked;
+					m_psDataHeader->fDataRate = (m_psDataHeader->dwCount1 + m_psDataHeader->dwCount2) / (double)(GetTickCount() - m_dwStartRead) * 1000;
+					m_psDataHeader->fDataRate /= ((m_sInit.bChan1 && m_sInit.bChan2)?2:1);
+					m_dwStartRead = GetTickCount();
+					m_sData.pHead = m_psDataHeader;
+					m_pcComm->SendData(&m_sData, llId);
+					m_psDataHeader = (SADCData*) m_pcMemPool->PoolAcquire(sizeof(SADCData)+sizeof(DWORD)*m_sInit.dwDataPerTrans*((m_sInit.bChan1 && m_sInit.bChan2)?2:1));
+					if (!m_psDataHeader)
+					{
+						m_bError = true;
+						LeaveCriticalSection(psSafe);
+						return;
+					}
+					m_psDataHeader->dwChan2Start = m_sInit.bChan1?m_sInit.dwDataPerTrans:0;
+					m_psDataHeader->dwCount1 = 0;
+					m_psDataHeader->dwCount2 = 0;
+					m_psDataHeader->sDataBase.dwSize =sizeof(SADCData)+sizeof(DWORD)*m_sInit.dwDataPerTrans*((m_sInit.bChan1 && m_sInit.bChan2)?2:1);
+					m_psDataHeader->sDataBase.eType = eTrigger;
+					m_psDataHeader->sDataBase.nChan = m_sInitFT.nChan;
+					m_psDataHeader->sBase.dwSize = sizeof(SADCData)+sizeof(DWORD)*m_sInit.dwDataPerTrans*((m_sInit.bChan1 && m_sInit.bChan2)?2:1)-sizeof(SBaseIn);
+					m_psDataHeader->sBase.eType = eADCData;
+					m_psDataHeader->dStartTime = 0;
+					m_psDataHeader->dwChan1S = 0;
+					m_psDataHeader->dwChan2S = 0;
+					m_adwData = (DWORD*)((unsigned char*)m_psDataHeader+sizeof(SADCData));
+					memset(m_adwData, 0, sizeof(DWORD)*m_sInit.dwDataPerTrans*((m_sInit.bChan1 && m_sInit.bChan2)?2:1));
+					m_psDataHeader->ucError = 0;
+					m_psDataHeader->sDataBase.nError = 0;
+					m_usBadRead = 0;
+					m_usOverflow = 0;
+				}
+				ucStatusReg = m_aucBuff[j * cADCSize + cADCSize - 1];
+				m_bSecond = (ucStatusReg & 0x40) != 0;
+				if (ucStatusReg & 0x80)			// get overflow flag
+					++m_usOverflow;
+				dwDataPoint = 0;
+				memcpy(&dwDataPoint, m_aucBuff + j * cADCSize, cADCSize - 1);
+				if (ucStatusReg & 0x20 || !(ucStatusReg & 0x08))	// make sure the status register matches
+				{
+					++m_usBadRead;
+					continue;
+				} else
+					m_psDataHeader->ucError |= (ucStatusReg & 0x05) << (m_bSecond?4:0);	// chan1 or 2 error
+				if (m_bSecond)
+				{
+					if (m_sInit.bChan2)
+						m_adwData[m_psDataHeader->dwChan2Start + m_psDataHeader->dwCount2++] = dwDataPoint;
+					else 
 					{
 						++m_usBadRead;
-						m_dwDataCount= 0;
-					} else
-					{
-						m_psDataHeader->ucError |= (m_ucFlags&0x05)<<((m_ucFlags&0x40)?4:0);	// chan1 or 2 error
-						m_bSecond= (m_ucFlags&0x40) != 0;
+						continue;
 					}
-				}
-			}
-		} else	// either we already read status, or we don't read it
-		{
-			if ( (rx[i]&1<<m_sInit.ucClk) && (rx[i]&(ucData|1<<m_sInit.ucClk)) == ((ucData|1<<m_sInit.ucClk)&~(rx[i-1]&(ucData|1<<m_sInit.ucClk))))
-			{
-				if (m_sInit.bReverseBytes)	// read next data seg
-					m_dwTempData |= (rx[i-1]&ucData)>>((m_dwDataCount-1)%m_ucTransPerByte)*ucShift;
-				else
-					m_dwTempData |= (rx[i-1]&ucData)>>((m_ucTransPerByte-1-(m_dwDataCount-1)%m_ucTransPerByte))*ucShift;
-				++m_dwDataCount;
-				if (m_sInit.bReverseBytes && !((m_dwDataCount-1)%m_ucTransPerByte))	// reverse byte when read full byte
-					*(unsigned char*)(&m_dwTempData)= BitReverseTable256[m_dwTempData&0xFF];
-				if (!((m_dwDataCount-1)%m_ucTransPerByte) &&	// if finished byte, but not last byte make room for next byte
-					((m_dwDataCount-1)/m_ucTransPerByte - (m_sInit.bStatusReg?1:0)) < m_sInit.ucBitsPerData/8U)
-					m_dwTempData= m_dwTempData<<8;
-				if (!((m_dwDataCount-1)%m_ucTransPerByte) &&	// if finished last byte, send
-					((m_dwDataCount-1)/m_ucTransPerByte - (m_sInit.bStatusReg?1:0)) == m_sInit.ucBitsPerData/8)
+				} else
 				{
-					if (m_bSecond)// && m_sInit.bChan2)
+					if (m_sInit.bChan1)
+						m_adwData[m_psDataHeader->dwCount1++]= dwDataPoint;
+					else 
 					{
-						if (m_sInit.bChan2)
-							m_adwData[m_psDataHeader->dwChan2Start+m_psDataHeader->dwCount2++]= m_dwTempData;
-						else
-							++m_usBadRead;
+						++m_usBadRead;
+						continue;
 					}
-					else
-						m_adwData[m_psDataHeader->dwCount1++]= m_dwTempData;
-					m_dwDataCount= 0;
-					// full so send data
-					if (m_psDataHeader->dwCount1 == m_sInit.dwDataPerTrans || m_psDataHeader->dwCount2 == m_sInit.dwDataPerTrans)
-					{
-						m_psDataHeader->sDataBase.nError= m_usBadRead | (m_usOverflow<<16);
-						m_psDataHeader->dwPos= m_dwPos++;
-						m_dwAmountRead+= m_psDataHeader->dwCount1+m_psDataHeader->dwCount2;
-						m_psDataHeader->fSpaceFull= m_fSpaceFull;
-						m_psDataHeader->fTimeWorked= m_fTimeWorked;
-						m_psDataHeader->fDataRate= m_fDataRate;
-						m_sData.pHead= m_psDataHeader;
-						m_pcComm->SendData(&m_sData, llId);
-						m_psDataHeader= (SADCData*) m_pcMemPool->PoolAcquire(sizeof(SADCData)+sizeof(DWORD)*m_sInit.dwDataPerTrans*(m_sInit.bChan2?2:1));
-						if (!m_psDataHeader)
-						{
-							m_bError= true;
-							LeaveCriticalSection(psSafe);
-							return;
-						}
-						m_psDataHeader->dwChan2Start= m_sInit.dwDataPerTrans;
-						m_psDataHeader->dwCount1= 0;
-						m_psDataHeader->dwCount2= 0;
-						m_psDataHeader->sDataBase.dwSize=sizeof(SADCData)+sizeof(DWORD)*m_sInit.dwDataPerTrans*(m_sInit.bChan2?2:1);
-						m_psDataHeader->sDataBase.eType= eTrigger;
-						m_psDataHeader->sDataBase.nChan= m_sInitFT.nChan;
-						m_psDataHeader->sBase.dwSize= sizeof(SADCData)+sizeof(DWORD)*m_sInit.dwDataPerTrans*(m_sInit.bChan2?2:1)-sizeof(SBaseIn);
-						m_psDataHeader->sBase.eType= eADCData;
-						m_psDataHeader->dStartTime= 0;
-						m_psDataHeader->dwChan1S= 0;
-						m_psDataHeader->dwChan2S= 0;
-						m_adwData= (DWORD*)((unsigned char*)m_psDataHeader+sizeof(SADCData));
-						m_psDataHeader->ucError= 0;
-						m_psDataHeader->sDataBase.nError= 0;
-						m_usBadRead= 0;
-						m_usOverflow= 0;
-					}
+
 				}
 			}
 		}
-		++i;
 	}
-	m_ucLastByte= rx[m_sInitFT.dwBuff];
 	LeaveCriticalSection(psSafe);
 }

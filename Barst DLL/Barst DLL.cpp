@@ -896,9 +896,9 @@ extern "C"	BARSTDLL_API int __stdcall BarstSendDeviceTrigger(HANDLE hPipe, int n
 extern "C"	BARSTDLL_API int __stdcall BarstFTDIReadADCData(HANDLE hPipe, SADCData* psADC, DWORD* adwChan1Data, DWORD* adwChan2Data, 
 	DWORD dwChanSize)
 {
-	if (!hPipe || hPipe == INVALID_HANDLE_VALUE || !psADC || !adwChan1Data || !dwChanSize)
+	if (!hPipe || hPipe == INVALID_HANDLE_VALUE || !psADC || (!adwChan1Data && !adwChan2Data) || !dwChanSize)
 		return BAD_INPUT_PARAMS;
-	const DWORD dwSize= sizeof(SADCData)+dwChanSize*sizeof(DWORD)*(adwChan2Data?2:1);
+	const DWORD dwSize= sizeof(SADCData) + dwChanSize * sizeof(DWORD) * (adwChan1Data && adwChan2Data?2:1);
 	int nRes= 0;
 	SADCData* psADCInfo= (SADCData*)malloc(dwSize);
 	if (!psADCInfo)
@@ -916,17 +916,23 @@ extern "C"	BARSTDLL_API int __stdcall BarstFTDIReadADCData(HANDLE hPipe, SADCDat
 		nRes= UNEXPECTED_READ;
 	else if (dwRead == sizeof(SBaseIn))
 		nRes= psADCInfo->sDataBase.nError;
-	else if (dwSize != dwRead)	// make sure buffer size match, value is always there, even if chan2 is inactive
+	else if (dwSize != dwRead)	// make sure buffer size match, value is always there, even if one chan is inactive
 		nRes= SIZE_MISSMATCH;
 	if (nRes)
 	{
 		free(psADCInfo);
 		return nRes;
 	}
+	if ((psADCInfo->dwCount1 && !adwChan1Data) || (psADCInfo->dwCount2 && !adwChan2Data))
+	{
+		free(psADCInfo);
+		return BAD_INPUT_PARAMS;
+	}
 	
 	*psADC= *psADCInfo;
-	memcpy(adwChan1Data, (char*)psADCInfo+sizeof(SADCData), sizeof(DWORD)*psADCInfo->dwCount1);
-	if (adwChan2Data && psADCInfo->dwCount2)
+	if (psADCInfo->dwCount1)
+		memcpy(adwChan1Data, (char*)psADCInfo+sizeof(SADCData), sizeof(DWORD)*psADCInfo->dwCount1);
+	if (psADCInfo->dwCount2)
 		memcpy(adwChan2Data, (char*)psADCInfo+sizeof(SADCData)+sizeof(DWORD)*psADCInfo->dwChan2Start, sizeof(DWORD)*psADCInfo->dwCount2);
 
 	free(psADCInfo);
@@ -1082,6 +1088,9 @@ extern "C"	BARSTDLL_API int __stdcall BarstSerialWrite(HANDLE hPipe, int nChan, 
 			*psData= *((SSerialData*)((char*)pBaseOut+sizeof(SBaseOut)+sizeof(SBase)));
 		}
 	}
+
+	free(pBase);
+	free(pBaseOut);
 	return nRes;
 }
 

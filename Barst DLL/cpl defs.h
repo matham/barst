@@ -15,7 +15,7 @@
 #define MIN_BUFF_OUT		256	// smallest server write (clients read) buffer for named pipe communicator
 #define MIN_FTDI_LIB_VER	0x00030204	// the lowest FTDI version we accept for FTDI lib driver
 #define MIN_RTV_LIB_VER		1080	// the lowest RTV version we accept for RTV dll lib driver
-#define	BARST_VERSION		10000	// it's 1.00.00
+#define	BARST_VERSION		20000	// it's 2.00.00
 #define FTDI_MAX_BUFF_H		(510*128)	// max buffer that FTDI can r/w on high speed devices.
 #define FTDI_MAX_BUFF_L		(62*1024) // max buffer that FTDI can r/w on low speed devices.
 #define FTDI_BAUD_2232H		200000	// clock rate is actually 1MHz = 200000*5
@@ -318,13 +318,33 @@ typedef struct SADCInit
 		second channel is active) has been accumilated and than send eactly dwDataPerTrans (for each channel) 
 		data points	to the client. */
 	DWORD			dwDataPerTrans;
-	/** defines which pin in the USB bus is the clock pin to the ADC. Currently, in Alder board this must be 0. */
+	/** defines which pin in the USB bus is the clock pin to the ADC. */
 	unsigned char	ucClk;
 	/** Defines which pins on the USB bus are data pins. The data pins always start from pin 7 and go
 		until an even number - e.g. 6 (data is pins 6, and 7), or 4 (data is pins 4, 5, 6, and 7).
 		Currently, in Alder board this must be 4. */
 	unsigned char	ucLowestDataBit;
-	/** The bit depth of the ADC data read. Currently, in Alder board this must be 24. */
+	/** Indicates the number of bits connected to the ADC data port. Range is [0, 6]
+		0 indicates 2 bits are connected, while 6 indiactes the full port, 8 bits are connected. */
+	unsigned char	ucDataBits;
+	/** The adc samplig rate in Hz is MCLK/(ucRateFilter*A + B)
+		Where MCLK is the crytal resonator frequency (6MHz for the ADC Board).
+		If bChop is true, A is 128, ucRateFilter can range between 2 to 127 inclusive, and B is 249 if bChan2 and bChan1 are true, otherwise it's 248.
+		If bChop is false, A is 64, ucRateFilter can range between 3 to 127 inclusive, and B is 207 if bChan2 and bChan1 are true, otherwise it's 206. */
+	unsigned char	ucRateFilter;
+	/** Whether chopping mode (noise reduction is active). */
+	bool			bChop;
+	/** If channel 1 in the ADC device is read. */
+	bool			bChan1;
+	/** If channel 2 in the ADC device is read. */
+	bool			bChan2;
+	/** The voltage input range of the active channels. 
+		0: +/- 10V.
+		1: 0 - 10V.
+		2: +/- 5V.
+		3: 0 - 5V.		*/
+	unsigned char	ucInputRange;
+	/** The bit depth of the ADC data read. It's either 16 or 24. */
 	unsigned char	ucBitsPerData;
 	/** True if we should read the status register from the ADC device. The status register 
 		helps us determine if errors occured. If bChan2 is true, this also MUST be true. 
@@ -334,9 +354,8 @@ typedef struct SADCInit
 		This indicates that the data pins on the USB bus are flipped relative to the ADC pins. I.e.
 		pin 7 connects to pin 0 etc. */
 	bool			bReverseBytes;
-	/** If channel 2 in the ADC device is also read. Currently, in Alder board this must be false. */
-	bool			bChan2;
-
+	/** Whether we configure the ADC before reading. */
+	bool			bConfigureADC;
 } SADCInit;
 
 

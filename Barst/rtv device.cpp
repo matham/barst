@@ -246,16 +246,16 @@ void CManagerRTV::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 		case 5:	// RGB8, PIX_FMT_RGB8
 			ucBpp= 1;
 			break;
-			//case 6:	// RAW8X
-			//	nBpp= 1;
-			//	sEncodeParams.ePixelFmtIn= (PixelFormat)0;
-			//	break;
-			//case 7:	// YUY2, PIX_FMT_YUYV422, PIX_FMT_YUV422P
-			//	nBpp= 1;
-			//	break;
-			//case 8:	// btYUV
-			//	nBpp= 1;
-			//	sEncodeParams.ePixelFmtIn= (PixelFormat)0;
+		case 6:	// RAW8X
+			ucBpp= 1;
+		//	sEncodeParams.ePixelFmtIn= (PixelFormat)0;
+			break;
+		case 7:	// YUY2, PIX_FMT_YUYV422, PIX_FMT_YUV422P
+			ucBpp= 2;
+			break;
+		case 8:	// btYUV
+			ucBpp= 1;
+		//	sEncodeParams.ePixelFmtIn= (PixelFormat)0;
 			break;
 		case 3:	// RGB24, PIX_FMT_BGR24
 			ucBpp= 3;

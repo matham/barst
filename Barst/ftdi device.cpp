@@ -437,13 +437,13 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 				SADCInit* sADCInit= (SADCInit*)pBase;
 				if (sADCInit->fUSBBuffToUse >= 100.0)
 					dwMaxWrite= max(dwMaxPacket, dwMaxWrite);
-				else if (sADCInit->fUSBBuffToUse/100 <= (float)dwPacket/(float)dwMaxPacket)
-					dwMaxWrite= max(dwPacket, dwMaxWrite);
+				else if (sADCInit->fUSBBuffToUse/100 <= 3*(float)dwPacket/(float)dwMaxPacket)
+					dwMaxWrite= max(max(90, 3*dwPacket), dwMaxWrite);
 				else 
 					dwMaxWrite= max((DWORD)ceil(sADCInit->fUSBBuffToUse/100*dwMaxPacket)-(DWORD)ceil(sADCInit->fUSBBuffToUse/100*dwMaxPacket)%dwPacket, dwMaxWrite);
 				bPadd= true;
 				pBase= (SBase*)((char*)pBase +sizeof(SADCInit));
-				dwBuffSizeWrite= max(dwBuffSizeWrite, sizeof(SADCInit)+sizeof(DWORD)*sADCInit->dwDataPerTrans*(sADCInit->bChan2?2:1));
+				dwBuffSizeWrite= max(dwBuffSizeWrite, sizeof(SADCInit)+sizeof(DWORD)*sADCInit->dwDataPerTrans*(sADCInit->bChan2&&sADCInit->bChan1?2:1));
 			} else
 			{
 				nError= SIZE_MISSMATCH;
@@ -593,7 +593,7 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 				sPeriphInit.dwMaxBaud= FTDI_BAUD_DEFAULT;	// 1MHz/16
 				break;
 			}
-			sPeriphInit.ucBitOutput= 1<<sADCInit.ucClk;
+			sPeriphInit.ucBitOutput = 1<<sADCInit.ucClk;
 			hEvent= CreateEvent(NULL,TRUE, FALSE, NULL);
 			m_ahEvents.push_back(hEvent);
 			m_aDevices.push_back(new CADCPeriph(sADCInit, m_pcComm, sPeriphInit, hEvent, nError, &m_cTimer));
@@ -664,6 +664,15 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 		m_sRx2.aucBuff+= 2;
 	}
 
+	DWORD dwBaud = FTDI_BAUD_2232H;
+	for (DWORD i= 0; i<m_aDevices.size(); ++i)
+	{
+		dwBaud= min(m_aDevices[i]->m_sInitFT.dwMaxBaud, dwBaud);
+	}
+	m_sChanInit.dwBaud = dwBaud;
+	m_sChanInit.dwBuffIn = dwBuffSizeRead + MIN_BUFF_IN;
+	m_sChanInit.dwBuffOut = dwBuffSizeWrite + MIN_BUFF_OUT;
+
 	m_hThread= CreateThread(NULL, 0, FTChanProc, this, 0, NULL);
 	if (!m_hThread)
 	{
@@ -677,17 +686,25 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 DWORD CChannelFTDI::GetInfo(void* pHead, DWORD dwSize)
 {
 	if (!pHead)
-		return sizeof(SBaseOut)+2*sizeof(SBase)+sizeof(FT_DEVICE_LIST_INFO_NODE_OS)+sizeof(SChanInitFTDI);
-	if (dwSize<sizeof(SBaseOut)+2*sizeof(SBase)+sizeof(FT_DEVICE_LIST_INFO_NODE_OS)+sizeof(SChanInitFTDI))
+		return 2*sizeof(SBaseOut)+2*sizeof(SBase)+sizeof(FT_DEVICE_LIST_INFO_NODE_OS)+sizeof(SChanInitFTDI);
+	if (dwSize<2*sizeof(SBaseOut)+2*sizeof(SBase)+sizeof(FT_DEVICE_LIST_INFO_NODE_OS)+sizeof(SChanInitFTDI))
 		return 0;
 
-	((SBaseOut*)pHead)->sBaseIn.dwSize= sizeof(SBaseOut)+2*sizeof(SBase)+sizeof(FT_DEVICE_LIST_INFO_NODE_OS)+sizeof(SChanInitFTDI);
+	((SBaseOut*)pHead)->sBaseIn.dwSize= 2*sizeof(SBaseOut)+2*sizeof(SBase)+sizeof(FT_DEVICE_LIST_INFO_NODE_OS)+sizeof(SChanInitFTDI);
 	((SBaseOut*)pHead)->sBaseIn.eType= eResponseEx;
 	((SBaseOut*)pHead)->sBaseIn.nChan= m_nChan;
 	((SBaseOut*)pHead)->sBaseIn.nError= 0;
 	((SBaseOut*)pHead)->bActive= true;
 	_tcsncpy_s(((SBaseOut*)pHead)->szName, DEVICE_NAME_SIZE, m_csName.c_str(), _TRUNCATE);
-	pHead= (char*)pHead+ sizeof(SBaseOut);
+	pHead= (char*)pHead + sizeof(SBaseOut);
+
+	((SBaseOut*)pHead)->sBaseIn.dwSize = sizeof(SBaseOut);
+	((SBaseOut*)pHead)->sBaseIn.eType = eResponseExL;
+	((SBaseOut*)pHead)->sBaseIn.nChan = m_nChan;
+	((SBaseOut*)pHead)->sBaseIn.nError = 0;
+	((SBaseOut*)pHead)->bActive = true;
+	((SBaseOut*)pHead)->llLargeInteger = m_cTimer.GetStart();
+	pHead = (char*)pHead + sizeof(SBaseOut);
 
 	((SBase*)pHead)->dwSize= sizeof(FT_DEVICE_LIST_INFO_NODE_OS)+sizeof(SBase);
 	((SBase*)pHead)->eType= eFTDIChan;
@@ -700,7 +717,7 @@ DWORD CChannelFTDI::GetInfo(void* pHead, DWORD dwSize)
 	pHead= (char*)pHead+ sizeof(SBase);
 	memcpy(pHead, &m_sChanInit, sizeof(SChanInitFTDI));
 
-	return sizeof(SBaseOut)+2*sizeof(SBase)+sizeof(FT_DEVICE_LIST_INFO_NODE_OS)+sizeof(SChanInitFTDI);
+	return 2*sizeof(SBaseOut)+2*sizeof(SBase)+sizeof(FT_DEVICE_LIST_INFO_NODE_OS)+sizeof(SChanInitFTDI);
 }
 
 CChannelFTDI::~CChannelFTDI()
@@ -859,7 +876,7 @@ DWORD CChannelFTDI::ThreadProc()
 					dwWrite= max(m_aDevices[i]->m_sInitFT.dwMinSizeW, dwWrite);
 					dwRead= max(m_aDevices[i]->m_sInitFT.dwMinSizeR, dwRead);
 				}
-				ucOutput |= m_aDevices[i]->m_sInitFT.ucBitOutput;
+				ucOutput |= m_aDevices[i]->GetOutputBits();
 				bUpdating = bUpdating || eType == eActivateState || eType == eInactivateState;
 			}
 			ucMode &= (~ucMode+1);	// get lowest bit
