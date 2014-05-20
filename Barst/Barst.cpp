@@ -9,6 +9,7 @@
 #include "ftdi device.h"
 #include "rtv device.h"
 #include "serial device.h"
+#include "mcdaq_device.h"
 
 
 
@@ -85,17 +86,17 @@ void CMainManager::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 			int nPos= -1;
 			for (size_t i= 0; i < m_acManagers.size() && nPos == -1; ++i) // make sure it isn't open already
 				if (m_acManagers[i] && _tcscmp(FTDI_MAN_STR, m_acManagers[i]->m_csName.c_str()) == 0)
-					nPos= i;
+					nPos= (int)i;
 			if (nPos != -1)	// found
 			{
 				sBase.nError= ALREADY_OPEN;
 				sBase.nChan= nPos;
 				break;
 			}
-			CManagerFTDI* pMan= new CManagerFTDI(m_pcComm, m_csPipe.c_str(), t, sBase.nError);
+			CManagerFTDI* pMan= new CManagerFTDI(m_pcComm, m_csPipe.c_str(), (int)t, sBase.nError);
 			if (!sBase.nError)
 			{
-				sBase.nChan= t;
+				sBase.nChan= (int)t;
 				m_acManagers[t]= pMan;
 			} else
 				delete pMan;
@@ -106,17 +107,17 @@ void CMainManager::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 			int nPos= -1;
 			for (size_t i= 0; i < m_acManagers.size() && nPos == -1; ++i) // make sure it isn't open already
 				if (m_acManagers[i] && _tcscmp(RTV_MAN_STR, m_acManagers[i]->m_csName.c_str()) == 0)
-					nPos= i;
+					nPos= (int)i;
 			if (nPos != -1)	// found
 			{
 				sBase.nError= ALREADY_OPEN;
 				sBase.nChan= nPos;
 				break;
 			}
-			CManagerRTV* pMan= new CManagerRTV(m_pcComm, m_csPipe.c_str(), t, sBase.nError);
+			CManagerRTV* pMan= new CManagerRTV(m_pcComm, m_csPipe.c_str(), (int)t, sBase.nError);
 			if (!sBase.nError)
 			{
-				sBase.nChan= t;
+				sBase.nChan= (int)t;
 				m_acManagers[t]= pMan;
 			} else
 				delete pMan;
@@ -127,17 +128,38 @@ void CMainManager::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 			int nPos= -1;
 			for (size_t i= 0; i < m_acManagers.size() && nPos == -1; ++i) // make sure it isn't open already
 				if (m_acManagers[i] && _tcscmp(SERIAL_MAN_STR, m_acManagers[i]->m_csName.c_str()) == 0)
-					nPos= i;
+					nPos= (int)i;
 			if (nPos != -1)	// found
 			{
 				sBase.nError= ALREADY_OPEN;
 				sBase.nChan= nPos;
 				break;
 			}
-			CManagerSerial* pMan= new CManagerSerial(m_pcComm, m_csPipe.c_str(), t, sBase.nError);
+			CManagerSerial* pMan= new CManagerSerial(m_pcComm, m_csPipe.c_str(), (int)t, sBase.nError);
 			if (!sBase.nError)
 			{
-				sBase.nChan= t;
+				sBase.nChan= (int)t;
+				m_acManagers[t]= pMan;
+			} else
+				delete pMan;
+			break;
+		}
+		case eMCDAQMan:
+		{
+			int nPos= -1;
+			for (size_t i= 0; i < m_acManagers.size() && nPos == -1; ++i) // make sure it isn't open already
+				if (m_acManagers[i] && _tcscmp(MCDAQ_MAN_STR, m_acManagers[i]->m_csName.c_str()) == 0)
+					nPos= (int)i;
+			if (nPos != -1)	// found
+			{
+				sBase.nError= ALREADY_OPEN;
+				sBase.nChan= nPos;
+				break;
+			}
+			CManagerMCDAQ* pMan= new CManagerMCDAQ(m_pcComm, m_csPipe.c_str(), (int)t, sBase.nError);
+			if (!sBase.nError)
+			{
+				sBase.nChan= (int)t;
 				m_acManagers[t]= pMan;
 			} else
 				delete pMan;
