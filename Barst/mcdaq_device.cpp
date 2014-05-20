@@ -1,3 +1,17 @@
+/**
+For MCDAQ channels, after a channel is created, the channel is always active.
+That is you can instantly request read/writes. A activate/inactivate command will
+not be recognized, and cause a error response.
+
+To request a read, you just send a trigger, provided the channel was
+opened with read permissions. The pipe tha triggered will get a response, or many
+responses if the channel is continuous. To stop a continuous read, you
+send a cancel request from the pipe that initially send the trigger.
+Because you cannot set the channel to inactive, the only way to stop a
+continuous read is to cancel it. After a cancel, no new data will
+be added to that pipe, the last message, perhaps after data already queue
+to be sent, is the cancel request response.
+**/
 
 #include "base classses.h"
 #include "named pipes.h"
@@ -15,7 +29,6 @@ int (EXTCCONV *lpf_cbGetRevision)(float *RevNum, float *VxDRevNum) = NULL;
 
 DWORD WINAPI MCDAQProc(LPVOID lpParameter)
 {
-	// Call ThreadProc function of pipe object
     return ((CChannelMCDAQ *)lpParameter)->ThreadProc();
 }
 
@@ -311,8 +324,9 @@ void CChannelMCDAQ::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 	SBaseIn* pBase= (SBaseIn*)pHead;
 	if (!pBase || dwSize < sizeof(SBaseIn) || dwSize != pBase->dwSize)	// incorrect size read
 		nError= SIZE_MISSMATCH;
-	else if (!((pBase->eType == eQuery || pBase->eType == eTrigger ||  pBase->eType != eCancelReadRequest) && 
-		dwSize == sizeof(SBaseIn)) && !(pBase->eType == eData && 
+	else if (!((pBase->eType == eQuery || ((pBase->eType == eTrigger ||
+		pBase->eType == eCancelReadRequest) && m_sChanInit.ucDirection != 1)) && 
+		dwSize == sizeof(SBaseIn)) && !(pBase->eType == eData && m_sChanInit.ucDirection &&
 		((SBase*)((char*)pBase+sizeof(SBaseIn)))->eType == eMCDAQWriteData &&	// write 
 		dwSize == sizeof(SBaseIn)+sizeof(SBase)+sizeof(SMCDAQWData)))
 		nError= INVALID_COMMAND;
@@ -467,11 +481,20 @@ DWORD CChannelMCDAQ::ThreadProc()
 					sData.pHead = pBase;
 					*pBase = sBaseOut;
 					*((SBaseIn *)((char *)pBase + sizeof(SBaseOut))) = sBaseIn;
-					m_pcComm->SendData(&sData, m_allReads[i]);
+					if (m_pcComm->SendData(&sData, m_allReads[i]))
+						m_allReads[i] = -1;
 				}
 			}
 			if (!m_sChanInit.bContinuous)
 				m_allReads.clear();
+			int k = 0;
+			while (k < m_allReads.size())	// remove bad pipes
+			{
+				if (m_allReads[k] == -1)
+					m_allReads.erase(m_allReads.begin() + k);
+				else
+					k += 1;
+			}
 			if (m_allReads.size())
 				SetEvent(m_hReadEvent);
 			LeaveCriticalSection(&m_hReadSafe);

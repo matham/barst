@@ -1,4 +1,4 @@
-/** Defines the RTV manager and channels. */
+/** Defines the MCDAQ manager and channels. */
 
 
 #ifndef _CPL_MCDAQ_DEVICE_H_
@@ -29,7 +29,7 @@ private:
 
 typedef struct SMCDAQPacket
 {
-	__int64			llId;
+	__int64			llId;	// the pipe that gets the response
 	SMCDAQWData*	psData;
 } SMCDAQPacket;
 
@@ -39,9 +39,9 @@ typedef struct SMCDAQPacket
 class CChannelMCDAQ : public CDevice
 {
 public:
-	/** Create an RTV channel for a single RTV port. 
+	/** Create an MCDAQ channel for a single MCDAQ port. 
 		szPipe is the pipe name that will be exclusivly 
-		associated with this channel. The format should Blah:manager#:RTVPort# as defined in the API. 
+		associated with this channel. The format should Blah:manager#:MCDAQPort# as defined in the API. 
 		nChan is the channel number of this channel. 
 		sChanInit initializes the channel. 
 		nError returns an error codde if something went wrong.
@@ -58,18 +58,18 @@ public:
 	
 	const SChanInitMCDAQ		m_sChanInit;	// channel initialization info
 	const std::tstring			m_csPipeName;	// channels pipe name
-	const unsigned short		m_usChan;		// channel/RTV channel for this instance
+	const unsigned short		m_usChan;		// channel/MCDAQ channel for this instance
 private:
 	CTimer						m_cTimer;		// timer of this channel
-	unsigned short				m_usLastWrite;
+	unsigned short				m_usLastWrite;	// the last word written
 
-	HANDLE						m_hStopEvent;
-	HANDLE						m_hWriteEvent;
-	HANDLE						m_hReadEvent;
-	CQueue<SMCDAQPacket*>		m_asWPackets;
-	std::vector<long long>		m_allReads;
-	CRITICAL_SECTION			m_hReadSafe;
+	HANDLE						m_hStopEvent;	// signals stop
+	HANDLE						m_hWriteEvent;	// signals a new write ready
+	HANDLE						m_hReadEvent;	// signals a read request
+	CQueue<SMCDAQPacket*>		m_asWPackets;	// holds the requested write packets
+	std::vector<long long>		m_allReads;		// holds the pipes that requested reads
+	CRITICAL_SECTION			m_hReadSafe;	// protects access to m_allReads
 
-	HANDLE						m_hThread;
+	HANDLE						m_hThread;		// handle to thread
 };
 #endif
