@@ -309,11 +309,11 @@ CChannelSerial::CChannelSerial(const TCHAR szPipe[], int nChan, SChanInitSerial 
 DWORD CChannelSerial::GetInfo(void* pHead, DWORD dwSize)
 {
 	if (!pHead)
-		return sizeof(SBaseOut)+sizeof(SBase)+sizeof(SChanInitSerial);
-	if (dwSize<sizeof(SBaseOut)+sizeof(SBase)+sizeof(SChanInitSerial))
+		return 2*sizeof(SBaseOut)+sizeof(SBase)+sizeof(SChanInitSerial);
+	if (dwSize<2*sizeof(SBaseOut)+sizeof(SBase)+sizeof(SChanInitSerial))
 		return 0;
 
-	((SBaseOut*)pHead)->sBaseIn.dwSize= sizeof(SBaseOut)+sizeof(SBase)+sizeof(SChanInitSerial);
+	((SBaseOut*)pHead)->sBaseIn.dwSize= 2*sizeof(SBaseOut)+sizeof(SBase)+sizeof(SChanInitSerial);
 	((SBaseOut*)pHead)->sBaseIn.eType= eResponseEx;
 	((SBaseOut*)pHead)->sBaseIn.nChan= m_usChan;
 	((SBaseOut*)pHead)->sBaseIn.nError= 0;
@@ -321,12 +321,20 @@ DWORD CChannelSerial::GetInfo(void* pHead, DWORD dwSize)
 	_tcsncpy_s(((SBaseOut*)pHead)->szName, DEVICE_NAME_SIZE, m_csName.c_str(), _TRUNCATE);
 	pHead= (char*)pHead+ sizeof(SBaseOut);
 
+	((SBaseOut*)pHead)->sBaseIn.dwSize = sizeof(SBaseOut);
+	((SBaseOut*)pHead)->sBaseIn.eType = eResponseExL;
+	((SBaseOut*)pHead)->sBaseIn.nChan = m_usChan;
+	((SBaseOut*)pHead)->sBaseIn.nError = 0;
+	((SBaseOut*)pHead)->bActive = true;
+	((SBaseOut*)pHead)->llLargeInteger = m_cTimer.GetStart();
+	pHead = (char*)pHead + sizeof(SBaseOut);
+
 	((SBase*)pHead)->dwSize= sizeof(SChanInitSerial)+sizeof(SBase);
 	((SBase*)pHead)->eType= eSerialChanInit;
 	pHead= (char*)pHead+ sizeof(SBase);
 	memcpy(pHead, &m_sChanInit, sizeof(SChanInitSerial));
 
-	return sizeof(SBaseOut)+sizeof(SBase)+sizeof(SChanInitSerial);
+	return 2*sizeof(SBaseOut)+sizeof(SBase)+sizeof(SChanInitSerial);
 }
 
 CChannelSerial::~CChannelSerial()
