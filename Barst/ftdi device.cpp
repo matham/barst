@@ -1,6 +1,10 @@
 /**
-For ftdi devices, after a inactivate request when continously reading,
-only a inactive device or response will be sent. No data is sent after that.
+For ftdi devices, after a inactivate request when in continously reading,
+mode, only a inactive device response will be sent. No data is sent after that.
+
+As opposed to a RTV device, after a channel is activated, you need to trigger it
+to request reading. You can trigger as many times as you'd like from different pipe,
+each pipe will get a copy of the data.
 **/
 
 

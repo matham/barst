@@ -1,3 +1,13 @@
+/**
+For a serial device, each device is always active; i.e. there's no need to set its state to
+active/inactive, which in fact will cause a unrecognized command error. The reason is that
+after creation, a serial device is always ready to read/write data.
+
+Although many clients may read/write for a single channel, and their requests will be
+queued and performed in order. It might not make sense to do this because different
+clients might get other's data responses. Unless the clients are synced externally.
+**/
+
 
 #include "cpl defs.h"
 #include <Windows.h>

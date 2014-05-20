@@ -1,3 +1,13 @@
+/**
+For an RTV channel, typically you create the channel, then when ready, you activate the
+device. The pipe (only one client can connect to a RTV channel at any time) that activated it will
+instatly start recieving the frames read. When the device is set inactive, the pipe that 
+initially activated it, will also get a response saying that the device is closing. No
+new frames will be sent after the closing response to that pipe. Also, as opposed
+to other channels, once activated, data will start flowing back; there's no need to
+trigger it.
+**/
+
 
 #include "base classses.h"
 #include "named pipes.h"
@@ -463,6 +473,16 @@ void CChannelRTV::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 		{
 			lpf_AngeloRTV_Capture_Stop(m_usChan);
 			m_bActive= false;
+			pBase= (SBaseIn*)m_pcMemPool->PoolAcquire(sData.dwSize);
+			if (pBase)
+			{
+				pBase->dwSize= sizeof(SBaseIn);
+				pBase->eType= eResponse;
+				pBase->nChan= ((SBaseIn*)pHead)->nChan;
+				pBase->nError= DEVICE_CLOSING;
+				sData.pHead= pBase;
+				m_pcComm->SendData(&sData, m_llId);
+			}
 			m_llId= -1;
 			m_bSent= false;
 			m_pLastSent= NULL;
