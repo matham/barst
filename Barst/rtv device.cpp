@@ -6,23 +6,23 @@
 #include "AngeloRTVType_def.h"
 #include "Angelo.h"
 
-I16 (PASCAL *lpf_AngeloRTV_Initial)(U16 PortNo)= NULL;	//
-I16 (PASCAL *lpf_AngeloRTV_Close)(U16 PortNo)= NULL;	//
-U16 (PASCAL *lpf_AngeloRTV_Read_Serial)(U16 CardNo, U32* HighByte, U32* LowByte)= NULL;	//
-I16 (PASCAL *lpf_AngeloRTV_Get_Version)(U32 *DriverVersion,U32 *DLLVersion,U32 *Reserved)= NULL;	//
-I16 (PASCAL *lpf_AngeloRTV_Set_Image_Config)(U16 PortNo,U8 ConfigIndex ,U8 Value)= NULL;	//
-I16 (PASCAL *lpf_AngeloRTV_Set_Color_Format)(U16 PortNo,U8 ColorFormat)= NULL;	//
-I16 (PASCAL *lpf_AngeloRTV_Set_Video_Format)(U16 PortNo,U8 Value)= NULL;		//
-I16 (PASCAL *lpf_AngeloRTV_Capture_Start)(U16 PortNo, U32 CaptureNo)= NULL;		//
-I16 (PASCAL *lpf_AngeloRTV_Capture_Stop)(U16 PortNo)= NULL;						//
-I16 (PASCAL *lpf_AngeloRTV_Select_Channel)(U16 PortNo,U16 Multiplex)= NULL;		//
-I16 (PASCAL *lpf_AngeloRTV_Capture_Config)(U16 PortNo, U32 Start_Field)= NULL;	//
-I16 (PASCAL *lpf_AngeloRTV_Set_Callback)(U16 PortNo, void ( __stdcall *CallBackProc)(void *VideoBufferaddress ,U16 PortNo))= NULL;	//
-I16 (PASCAL *lpf_AngeloRTV_Get_Int_Status)(U16 PortNo,U32 *IntStatus)= NULL;	//
+short (PASCAL *lpf_AngeloRTV_Initial)(unsigned short PortNo)= NULL;	//
+short (PASCAL *lpf_AngeloRTV_Close)(unsigned short PortNo)= NULL;	//
+unsigned short (PASCAL *lpf_AngeloRTV_Read_Serial)(unsigned short CardNo, unsigned long* HighByte, unsigned long* LowByte)= NULL;	//
+short (PASCAL *lpf_AngeloRTV_Get_Version)(unsigned long *DriverVersion,unsigned long *DLLVersion,unsigned long *Reserved)= NULL;	//
+short (PASCAL *lpf_AngeloRTV_Set_Image_Config)(unsigned short PortNo,unsigned char ConfigIndex ,unsigned char Value)= NULL;	//
+short (PASCAL *lpf_AngeloRTV_Set_Color_Format)(unsigned short PortNo,unsigned char ColorFormat)= NULL;	//
+short (PASCAL *lpf_AngeloRTV_Set_Video_Format)(unsigned short PortNo,unsigned char Value)= NULL;		//
+short (PASCAL *lpf_AngeloRTV_Capture_Start)(unsigned short PortNo, unsigned long CaptureNo)= NULL;		//
+short (PASCAL *lpf_AngeloRTV_Capture_Stop)(unsigned short PortNo)= NULL;						//
+short (PASCAL *lpf_AngeloRTV_Select_Channel)(unsigned short PortNo,unsigned short Multiplex)= NULL;		//
+short (PASCAL *lpf_AngeloRTV_Capture_Config)(unsigned short PortNo, unsigned long Start_Field)= NULL;	//
+short (PASCAL *lpf_AngeloRTV_Set_Callback)(unsigned short PortNo, void ( __stdcall *CallBackProc)(void *VideoBufferaddress ,unsigned short PortNo))= NULL;	//
+short (PASCAL *lpf_AngeloRTV_Get_Int_Status)(unsigned short PortNo,unsigned long *IntStatus)= NULL;	//
 
 static CManagerRTV* s_pCRTVMan= NULL;
 
-extern "C"  void __stdcall MediaStreamProc(void* VideoBufferAddress ,U16 PortNo)
+extern "C"  void __stdcall MediaStreamProc(void* VideoBufferAddress ,unsigned short PortNo)
 {
 	DWORD dwStatus;
 	if (s_pCRTVMan && !lpf_AngeloRTV_Get_Int_Status(PortNo, &dwStatus) && (dwStatus&~0x01) == 0x02)

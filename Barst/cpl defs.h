@@ -7,7 +7,8 @@
 #include <string>
 #include <Windows.h>	// we need to include windows to include ftd2xx.h
 #include "ftd2xx.h"		// for the error codes and the FT_DEVICE_LIST_INFO_NODE struct defintion
-#include "AngeloRTVErrorCode.h" // for RTV error codes
+
+#define	BARST_VERSION		20000	// it's 2.00.00
 
 #define MIN_PIPE_BUF_SIZE	20	// smallest named pipe buffer possible
 #define	DEVICE_NAME_SIZE	8	// size of the unique internal name given for all devices/managers
@@ -15,7 +16,6 @@
 #define MIN_BUFF_OUT		256	// smallest server write (clients read) buffer for named pipe communicator
 #define MIN_FTDI_LIB_VER	0x00030204	// the lowest FTDI version we accept for FTDI lib driver
 #define MIN_RTV_LIB_VER		1080	// the lowest RTV version we accept for RTV dll lib driver
-#define	BARST_VERSION		20000	// it's 2.00.00
 #define FTDI_MAX_BUFF_H		(510*128)	// max buffer that FTDI can r/w on high speed devices.
 #define FTDI_MAX_BUFF_L		(62*1024) // max buffer that FTDI can r/w on low speed devices.
 #define FTDI_BAUD_2232H		200000	// clock rate is actually 1MHz = 200000*5

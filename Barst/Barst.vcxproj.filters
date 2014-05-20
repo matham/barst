@@ -51,13 +51,13 @@
     <ClInclude Include="misc tools.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Angelo.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="AngeloRTVErrorCode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="AngeloRTVType_def.h">
+    <ClInclude Include="rtv device.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="serial device.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="rtv device.h">

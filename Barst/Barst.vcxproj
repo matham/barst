@@ -150,9 +150,7 @@
     <None Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Angelo.h" />
     <ClInclude Include="AngeloRTVErrorCode.h" />
-    <ClInclude Include="AngeloRTVType_def.h" />
     <ClInclude Include="base classses.h" />
     <ClInclude Include="serial device.h" />
     <ClInclude Include="cpl defs.h" />
