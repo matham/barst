@@ -267,13 +267,17 @@ DWORD CPipeServer::ThreadProc()
 						LeaveCriticalSection(&m_sPipeSafe);
 						continue;
 					}
+					LeaveCriticalSection(&m_sPipeSafe);
 					m_pcDevice->ProcessData(m_aPipes[i]->pRead, dwBytes, m_aPipes[i]->llId);	// finish up
+					EnterCriticalSection(&m_sPipeSafe);
 					m_aPipes[i]->fPending= FALSE;
 				}
 
 				if (ReadFile(m_aPipes[i]->hPipe, m_aPipes[i]->pRead, m_dwBuffSizeIn, &dwBytes, &m_aPipes[i]->oOverlap))
 				{
+					LeaveCriticalSection(&m_sPipeSafe);
 					m_pcDevice->ProcessData(m_aPipes[i]->pRead, dwBytes, m_aPipes[i]->llId);
+					EnterCriticalSection(&m_sPipeSafe);
 					SetEvent(m_aPipes[i]->hEvent);	// read again
 				} else if (GetLastError() == ERROR_IO_PENDING)
 				{
