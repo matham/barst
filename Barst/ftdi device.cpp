@@ -1,3 +1,8 @@
+/**
+For ftdi devices, after a inactivate request when continously reading,
+only a inactive device or response will be sent. No data is sent after that.
+**/
+
 
 #include "base classses.h"
 #include "named pipes.h"

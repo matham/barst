@@ -231,8 +231,21 @@ bool CADCPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFTD
 		m_eConfigState = eConfigStart;
 		break;
 	case eInactivateState:
+		SData sData;
+		sData.dwSize= sizeof(SBaseIn);
+		sData.pDevice= this;
+		sData.pHead= m_pcMemPool->PoolAcquire(sizeof(SBaseIn));
+		if (sData.pHead)
+		{
+			((SBaseIn*)sData.pHead)->eType= eResponse;
+			((SBaseIn*)sData.pHead)->nChan= m_sInitFT.nChan;
+			((SBaseIn*)sData.pHead)->nError= DEVICE_CLOSING;
+			((SBaseIn*)sData.pHead)->dwSize= sizeof(SBaseIn);
+		}
 		EnterCriticalSection(&m_hStateSafe);
 		m_eState= eInactivateState;
+		if (sData.pHead)
+			m_pcComm->SendData(&sData, m_llId);
 		m_llId= -1;		// unlikly to have comm with this ID
 		LeaveCriticalSection(&m_hStateSafe);
 		break;
