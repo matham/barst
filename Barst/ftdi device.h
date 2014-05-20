@@ -279,7 +279,7 @@ private:
 	int						m_nProcessed;
 	double					m_dInitial;
 	CRITICAL_SECTION		m_hDataSafe;
-	CQueue<__int64>			m_allIds;
+	std::vector<__int64>	m_allIds;
 	HANDLE					m_hNext;
 };
 
@@ -332,7 +332,7 @@ private:
 	int						m_nProcessed;
 	double					m_dInitial;
 	CRITICAL_SECTION		m_hDataSafe;
-	CQueue<__int64>			m_allIds;
+	std::vector<__int64>	m_allIds;
 	HANDLE					m_hNext;
 };
 

@@ -2,6 +2,9 @@
 #include "ftdi device.h"
 
 
+/** Note, DoWork is called from one thread only. Read/write requests from devices
+during inactive state are errored back. ePreWrite is always followed by a ePostWrite.
+All activation requests are done from the single thread with m_asUpdates.**/
 
 
 
@@ -98,7 +101,8 @@ bool CMultiWPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 		m_bUpdated= false;
 		LeaveCriticalSection(&m_hDataSafe);
 		ResetEvent(m_hNext);
-		for (int i= 0; i<m_allIds.GetSize(); ++i)	// respond to all waiting users
+		// no new requests can be added because state is inactive
+		while (m_allIds.GetSize())	// respond to all waiting users
 		{
 			SData sData;
 			sData.dwSize= sizeof(SBaseIn);
@@ -250,7 +254,7 @@ void CMultiWPeriph::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 CMultiRPeriph::CMultiRPeriph(const SValveInit &sValveInit, CComm *pcComm, const SInitPeriphFT &sInitFT, 
 	int &nError, HANDLE hNewData, CTimer* pcTimer) : CPeriphFTDI(MULTI_R_P, sInitFT), m_sInit(sValveInit),
 	m_ucDefault(1<<sValveInit.ucLatch|1<<sValveInit.ucClk), m_ucMask(~(1<<sValveInit.ucLatch|
-	1<<sValveInit.ucClk|1<<sValveInit.ucData)), m_allIds(hNewData)
+	1<<sValveInit.ucClk|1<<sValveInit.ucData))
 {
 	nError= 0;
 	m_bError= true;
@@ -326,9 +330,7 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 	{
 		EnterCriticalSection(&m_hDataSafe);
 		m_eState= eInactive;
-		LeaveCriticalSection(&m_hDataSafe);
-		ResetEvent(m_hNext);
-		for (int i= 0; i<m_allIds.GetSize(); ++i)	// respond to all waiting users
+		for (int i= 0; i<m_allIds.size(); ++i)	// respond to all waiting users
 		{
 			SData sData;
 			sData.dwSize= sizeof(SBaseIn);
@@ -340,9 +342,12 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 				((SBaseIn*)sData.pHead)->nChan= m_sInitFT.nChan;
 				((SBaseIn*)sData.pHead)->nError= DEVICE_CLOSING;
 				((SBaseIn*)sData.pHead)->dwSize= sizeof(SBaseIn);
-				m_pcComm->SendData(&sData, m_allIds.Front(true, bNotEmpty));
+				m_pcComm->SendData(&sData, m_allIds[i]);
 			}
 		}
+		m_allIds.clear();
+		LeaveCriticalSection(&m_hDataSafe);
+		ResetEvent(m_hNext);
 		m_nProcessed= 0;
 		m_bRead= false;
 		// do this for the full beffer length
@@ -350,7 +355,9 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 			aucBuff[i]= (aucBuff[i]&m_ucMask)|m_ucDefault;
 	} else if (m_eState == eActive && eReason == ePreWrite)	// write the next set of data
 	{
-		m_nProcessed= m_allIds.GetSize();	// current number of triggers proccesed, or only one if cont
+		EnterCriticalSection(&m_hDataSafe);
+		m_nProcessed= m_allIds.size();	// current number of triggers proccesed
+		LeaveCriticalSection(&m_hDataSafe);
 		if (m_nProcessed)
 		{
 			//int k= 0;
@@ -389,20 +396,24 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 						((SBaseOut*)sData.pHead)->sBaseIn.nError= nError;
 						((SBaseOut*)sData.pHead)->sBaseIn.dwSize= sizeof(SBaseOut);
 						((SBaseOut*)sData.pHead)->dDouble= m_dInitial;
-						m_pcComm->SendData(&sData, m_allIds.Front(!m_sInit.bContinuous, bNotEmpty));	// if cont, than only one user, don't pop
+						EnterCriticalSection(&m_hDataSafe);
+						m_pcComm->SendData(&sData, m_allIds[i]);
+						LeaveCriticalSection(&m_hDataSafe);
 					}
 				}
 				m_bRead= false;
-				m_nProcessed= 0;
 				EnterCriticalSection(&m_hDataSafe);
-				if (!m_allIds.GetSize())
+				if (!m_sInit.bContinuous)
+					m_allIds.erase(m_allIds.begin(), m_allIds.begin() + m_nProcessed);
+				if (!m_allIds.size())
 					ResetEvent(m_hNext);
 				LeaveCriticalSection(&m_hDataSafe);
+				m_nProcessed= 0;
 			}
 			for (DWORD i= 0; i<(m_sInit.dwBoards*8*2+2+4)*m_sInit.dwClkPerData;++i)
 				aucBuff[i]= (aucBuff[i]&m_ucMask)|m_ucDefault;
 		}
-	} else if (m_eState == eActive && eReason == ePostRead) // let user know if error and set buffer to default.
+	} else if (m_eState == eActive && eReason == ePostRead) // respond to user
 	{
 		if (m_bRead)
 		{
@@ -424,15 +435,28 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 					bool* bVal= (bool*)((char*)sData.pHead+sizeof(SBaseOut)+sizeof(SBase));
 					for (DWORD i= 0; i<m_sInit.dwBoards*8; ++i)
 						bVal[i]= (((SFTBufferSafe*)pHead)->aucBuff[(3+i*2)*m_sInit.dwClkPerData]&1<<m_sInit.ucData) != 0;
-					m_pcComm->SendData(&sData, m_allIds.Front(!m_sInit.bContinuous, bNotEmpty));	// if cont, than only one user, don't pop
+					EnterCriticalSection(&m_hDataSafe);
+					if (m_pcComm->SendData(&sData, m_allIds[i]))
+						m_allIds[i] = -1;
+					LeaveCriticalSection(&m_hDataSafe);
 				}
 			}
 			m_bRead= false;
-			m_nProcessed= 0;
 			EnterCriticalSection(&m_hDataSafe);
-			if (!m_allIds.GetSize())
+			if (!m_sInit.bContinuous)
+				m_allIds.erase(m_allIds.begin(), m_allIds.begin() + m_nProcessed);
+			int k = 0;
+			while (k < m_allIds.size())
+			{
+				if (m_allIds[k] == -1)
+					m_allIds.erase(m_allIds.begin() + k);
+				else
+					k += 1;
+			}
+			if (!m_allIds.size())
 				ResetEvent(m_hNext);
 			LeaveCriticalSection(&m_hDataSafe);
+			m_nProcessed= 0;
 		}
 	}
 	return true;
@@ -450,9 +474,9 @@ void CMultiRPeriph::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 {
 	if(m_bError)
 		return;
-	// only trigger and only accept a trigger for cont if it's the first
-	if (!pHead || dwSize != sizeof(SBaseIn) || ((SBaseIn*)pHead)->eType != eTrigger ||
-		((SBaseIn*)pHead)->dwSize != dwSize || (m_sInit.bContinuous && m_allIds.GetSize())) 
+	// only trigger
+	if (!pHead || dwSize != sizeof(SBaseIn) || (((SBaseIn*)pHead)->eType != eTrigger &&
+		((SBaseIn*)pHead)->eType != eCancelReadRequest) || ((SBaseIn*)pHead)->dwSize != dwSize) 
 	{
 		SData sData;
 		sData.dwSize= sizeof(SBaseIn);
@@ -470,16 +494,41 @@ void CMultiRPeriph::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 	}
 
 	int nError= 0;
-	EnterCriticalSection(&m_hDataSafe);
-	if (m_eState == eActive)
+	EQueryType eResp = eResponse;
+	if (((SBaseIn*)pHead)->eType == eTrigger)	// request read
 	{
-		m_allIds.Push(llId);	// pipe to send reads
-		SetEvent(m_hNext);
-	} else
-		nError= INACTIVE_DEVICE;
-	LeaveCriticalSection(&m_hDataSafe);
+		int k;
+		EnterCriticalSection(&m_hDataSafe);
+		if (m_eState == eActive)
+		{
+			for (k = 0; k < m_allIds.size(); ++k)
+				if (m_allIds[k] == llId)
+					break;
+			if (!m_sInit.bContinuous || k == m_allIds.size())
+			{
+				m_allIds.push_back(llId);
+				SetEvent(m_hNext);
+			} else
+				nError = ALREADY_OPEN;
+		} else
+			nError= INACTIVE_DEVICE;
+		LeaveCriticalSection(&m_hDataSafe);
+	} else										// remove read request
+	{
+		EnterCriticalSection(&m_hDataSafe);
+		for (int k = 0; k < m_allIds.size(); ++k)
+		{
+			if (m_allIds[k] == llId)
+			{
+				m_allIds[k] = -1;
+				break;
+			}
+		}
+		LeaveCriticalSection(&m_hDataSafe);
+		eResp = eCancelReadRequest;
+	}
 
-	if (nError)
+	if (nError || eResp != eResponse)
 	{
 		SData sData;
 		sData.dwSize= sizeof(SBaseIn);
@@ -488,7 +537,7 @@ void CMultiRPeriph::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 		if (sData.pHead)
 		{
 			((SBaseIn*)sData.pHead)->dwSize= sizeof(SBaseIn);
-			((SBaseIn*)sData.pHead)->eType= eResponse;
+			((SBaseIn*)sData.pHead)->eType= eResp;
 			((SBaseIn*)sData.pHead)->nChan= m_sInitFT.nChan;
 			((SBaseIn*)sData.pHead)->nError= nError;
 			m_pcComm->SendData(&sData, llId);
@@ -589,7 +638,8 @@ bool CPinWPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 		m_bUpdated= false;
 		LeaveCriticalSection(&m_hDataSafe);
 		ResetEvent(m_hNext);
-		for (int i= 0; i<m_allIds.GetSize(); ++i)	// respond to all waiting users
+		// no new requests can be added because state is inactive
+		while (m_allIds.GetSize())	// respond to all waiting users
 		{
 			SData sData;
 			sData.dwSize= sizeof(SBaseIn);
@@ -775,7 +825,7 @@ void CPinWPeriph::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 
 CPinRPeriph::CPinRPeriph(const SPinInit &sPinInit, CComm *pcComm, const SInitPeriphFT &sInitFT, 
 	int &nError, HANDLE hNewData, CTimer* pcTimer) : CPeriphFTDI(PIN_R_P, sInitFT), m_sInit(sPinInit),
-	m_ucMask(~sPinInit.ucActivePins), m_allIds(hNewData)
+	m_ucMask(~sPinInit.ucActivePins)
 {
 	nError= 0;
 	m_bError= true;
@@ -851,9 +901,7 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 	{
 		EnterCriticalSection(&m_hDataSafe);
 		m_eState= eInactive;
-		LeaveCriticalSection(&m_hDataSafe);
-		ResetEvent(m_hNext);
-		for (int i= 0; i<m_allIds.GetSize(); ++i)	// respond to all waiting users
+		for (int i= 0; i<m_allIds.size(); ++i)	// respond to all waiting users
 		{
 			SData sData;
 			sData.dwSize= sizeof(SBaseIn);
@@ -865,22 +913,27 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 				((SBaseIn*)sData.pHead)->nChan= m_sInitFT.nChan;
 				((SBaseIn*)sData.pHead)->nError= DEVICE_CLOSING;
 				((SBaseIn*)sData.pHead)->dwSize= sizeof(SBaseIn);
-				m_pcComm->SendData(&sData, m_allIds.Front(true, bNotEmpty));
+				m_pcComm->SendData(&sData, m_allIds[i]);
 			}
 		}
+		m_allIds.clear();
+		LeaveCriticalSection(&m_hDataSafe);
+		ResetEvent(m_hNext);
 		m_nProcessed= 0;
 		m_bRead= false;
 		for (DWORD i= 0; i<m_sInitFT.dwBuff;++i)				// now set these pins to default
 			aucBuff[i]= aucBuff[i]&m_ucMask;
-	} else if (m_eState == eActive && eReason == ePreWrite)	// write the next set of data
+	} else if (m_eState == eActive && eReason == ePreWrite)
 	{
-		m_nProcessed= m_allIds.GetSize();	// current number of triggers proccesed (only one if cont)
+		EnterCriticalSection(&m_hDataSafe);
+		m_nProcessed= m_allIds.size();	// current number of triggers proccesed (only one if cont)
+		LeaveCriticalSection(&m_hDataSafe);
 		if (m_nProcessed)
 		{
 			m_bRead= true;
 			m_dInitial= m_pcTimer->Seconds();	// time right before reading
 		}
-	} else if (m_eState == eActive && eReason == ePostWrite) // let user know if error and set buffer to default.
+	} else if (m_eState == eActive && eReason == ePostWrite) // let user know if error
 	{
 		if (m_bRead)
 		{
@@ -899,18 +952,22 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 						((SBaseOut*)sData.pHead)->sBaseIn.nError= nError;
 						((SBaseOut*)sData.pHead)->sBaseIn.dwSize= sizeof(SBaseOut);
 						((SBaseOut*)sData.pHead)->dDouble= m_dInitial;
-						m_pcComm->SendData(&sData, m_allIds.Front(!m_sInit.bContinuous, bNotEmpty));	// if cont, than only one user, don't pop
+						EnterCriticalSection(&m_hDataSafe);
+						m_pcComm->SendData(&sData, m_allIds[i]);
+						LeaveCriticalSection(&m_hDataSafe);
 					}
 				}
 				m_bRead= false;
-				m_nProcessed= 0;
 				EnterCriticalSection(&m_hDataSafe);
-				if (!m_allIds.GetSize())
+				if (!m_sInit.bContinuous)
+					m_allIds.erase(m_allIds.begin(), m_allIds.begin() + m_nProcessed);
+				if (!m_allIds.size())
 					ResetEvent(m_hNext);
 				LeaveCriticalSection(&m_hDataSafe);
+				m_nProcessed= 0;
 			}
 		}
-	} else if (m_eState == eActive && eReason == ePostRead) // let user know if error and set buffer to default.
+	} else if (m_eState == eActive && eReason == ePostRead) // respond to user
 	{
 		if (m_bRead)
 		{
@@ -932,15 +989,28 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 					unsigned char* ucVal= (unsigned char*)sData.pHead+sizeof(SBaseOut)+sizeof(SBase);
 					for (unsigned short i= 0; i<m_sInit.usBytesUsed; ++i)
 						ucVal[i]= ((SFTBufferSafe*)pHead)->aucBuff[i]&~m_ucMask;
-					m_pcComm->SendData(&sData, m_allIds.Front(!m_sInit.bContinuous, bNotEmpty));	// if cont, than only one user, don't pop
+					EnterCriticalSection(&m_hDataSafe);
+					if (m_pcComm->SendData(&sData, m_allIds[i]))
+						m_allIds[i] = -1;
+					LeaveCriticalSection(&m_hDataSafe);
 				}
 			}
 			m_bRead= false;
-			m_nProcessed= 0;
 			EnterCriticalSection(&m_hDataSafe);
-			if (!m_allIds.GetSize())
+			if (!m_sInit.bContinuous)
+				m_allIds.erase(m_allIds.begin(), m_allIds.begin() + m_nProcessed);
+			int k = 0;
+			while (k < m_allIds.size())
+			{
+				if (m_allIds[k] == -1)
+					m_allIds.erase(m_allIds.begin() + k);
+				else
+					k += 1;
+			}
+			if (!m_allIds.size())
 				ResetEvent(m_hNext);
 			LeaveCriticalSection(&m_hDataSafe);
+			m_nProcessed= 0;
 		}
 	}
 	return true;
@@ -958,9 +1028,9 @@ void CPinRPeriph::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 {
 	if(m_bError)
 		return;
-	// only trigger and only accept a trigger for cont if it's the first
-	if (!pHead || dwSize != sizeof(SBaseIn) || ((SBaseIn*)pHead)->eType != eTrigger ||
-		((SBaseIn*)pHead)->dwSize != dwSize || (m_sInit.bContinuous && m_allIds.GetSize())) 
+	// only trigger
+	if (!pHead || dwSize != sizeof(SBaseIn) || (((SBaseIn*)pHead)->eType != eTrigger &&
+		((SBaseIn*)pHead)->eType != eCancelReadRequest) || ((SBaseIn*)pHead)->dwSize != dwSize) 
 	{
 		SData sData;
 		sData.dwSize= sizeof(SBaseIn);
@@ -978,16 +1048,41 @@ void CPinRPeriph::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 	}
 
 	int nError= 0;
-	EnterCriticalSection(&m_hDataSafe);
-	if (m_eState == eActive)
+	EQueryType eResp = eResponse;
+	if (((SBaseIn*)pHead)->eType == eTrigger)	// request read
 	{
-		m_allIds.Push(llId);	// pipe to send reads
-		SetEvent(m_hNext);
-	} else
-		nError= INACTIVE_DEVICE;
-	LeaveCriticalSection(&m_hDataSafe);
+		int k;
+		EnterCriticalSection(&m_hDataSafe);
+		if (m_eState == eActive)
+		{
+			for (k = 0; k < m_allIds.size(); ++k)
+				if (m_allIds[k] == llId)
+					break;
+			if (!m_sInit.bContinuous || k == m_allIds.size())
+			{
+				m_allIds.push_back(llId);
+				SetEvent(m_hNext);
+			} else
+				nError = ALREADY_OPEN;
+		} else
+			nError= INACTIVE_DEVICE;
+		LeaveCriticalSection(&m_hDataSafe);
+	} else										// remove read request
+	{
+		EnterCriticalSection(&m_hDataSafe);
+		for (int k = 0; k < m_allIds.size(); ++k)
+		{
+			if (m_allIds[k] == llId)
+			{
+				m_allIds[k] = -1;
+				break;
+			}
+		}
+		LeaveCriticalSection(&m_hDataSafe);
+		eResp = eCancelReadRequest;
+	}
 
-	if (nError)
+	if (nError || eResp != eResponse)
 	{
 		SData sData;
 		sData.dwSize= sizeof(SBaseIn);
@@ -996,7 +1091,7 @@ void CPinRPeriph::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 		if (sData.pHead)
 		{
 			((SBaseIn*)sData.pHead)->dwSize= sizeof(SBaseIn);
-			((SBaseIn*)sData.pHead)->eType= eResponse;
+			((SBaseIn*)sData.pHead)->eType= eResp;
 			((SBaseIn*)sData.pHead)->nChan= m_sInitFT.nChan;
 			((SBaseIn*)sData.pHead)->nError= nError;
 			m_pcComm->SendData(&sData, llId);
