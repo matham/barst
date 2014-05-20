@@ -317,7 +317,6 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 	if (m_bError)
 		return true;
 	unsigned char *aucBuff= (unsigned char *)pHead;
-	bool bNotEmpty;
 
 	if (eReason == eActivateState || eReason == eInactivateState)	// update state
 	{
@@ -356,7 +355,7 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 	} else if (m_eState == eActive && eReason == ePreWrite)	// write the next set of data
 	{
 		EnterCriticalSection(&m_hDataSafe);
-		m_nProcessed= m_allIds.size();	// current number of triggers proccesed
+		m_nProcessed= (int)m_allIds.size();	// current number of triggers proccesed
 		LeaveCriticalSection(&m_hDataSafe);
 		if (m_nProcessed)
 		{
@@ -417,7 +416,7 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 	{
 		if (m_bRead)
 		{
-			for (int i= 0; i<m_nProcessed; ++i)	// notify users
+			for (int j= 0; j<m_nProcessed; ++j)	// notify users
 			{
 				SData sData;
 				sData.dwSize= sizeof(SBaseOut)+sizeof(SBase)+sizeof(bool)*m_sInit.dwBoards*8;
@@ -436,8 +435,8 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 					for (DWORD i= 0; i<m_sInit.dwBoards*8; ++i)
 						bVal[i]= (((SFTBufferSafe*)pHead)->aucBuff[(3+i*2)*m_sInit.dwClkPerData]&1<<m_sInit.ucData) != 0;
 					EnterCriticalSection(&m_hDataSafe);
-					if (m_pcComm->SendData(&sData, m_allIds[i]))
-						m_allIds[i] = -1;
+					if (m_pcComm->SendData(&sData, m_allIds[j]))
+						m_allIds[j] = -1;
 					LeaveCriticalSection(&m_hDataSafe);
 				}
 			}
@@ -888,7 +887,6 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 	if (m_bError)
 		return true;
 	unsigned char *aucBuff= (unsigned char *)pHead;
-	bool bNotEmpty;
 
 	if (eReason == eActivateState || eReason == eInactivateState)	// update state
 	{
@@ -926,7 +924,7 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 	} else if (m_eState == eActive && eReason == ePreWrite)
 	{
 		EnterCriticalSection(&m_hDataSafe);
-		m_nProcessed= m_allIds.size();	// current number of triggers proccesed (only one if cont)
+		m_nProcessed= (int)m_allIds.size();	// current number of triggers proccesed (only one if cont)
 		LeaveCriticalSection(&m_hDataSafe);
 		if (m_nProcessed)
 		{
@@ -971,7 +969,7 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 	{
 		if (m_bRead)
 		{
-			for (int i= 0; i<m_nProcessed; ++i)	// notify users
+			for (int j= 0; j<m_nProcessed; ++j)	// notify users
 			{
 				SData sData;
 				sData.dwSize= sizeof(SBaseOut)+sizeof(SBase)+sizeof(unsigned char)*m_sInit.usBytesUsed;
@@ -990,8 +988,8 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 					for (unsigned short i= 0; i<m_sInit.usBytesUsed; ++i)
 						ucVal[i]= ((SFTBufferSafe*)pHead)->aucBuff[i]&~m_ucMask;
 					EnterCriticalSection(&m_hDataSafe);
-					if (m_pcComm->SendData(&sData, m_allIds[i]))
-						m_allIds[i] = -1;
+					if (m_pcComm->SendData(&sData, m_allIds[j]))
+						m_allIds[j] = -1;
 					LeaveCriticalSection(&m_hDataSafe);
 				}
 			}

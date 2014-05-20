@@ -147,12 +147,12 @@ void CManagerSerial::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 		if (i == m_acSerialDevices.size())
 			m_acSerialDevices.push_back(NULL);
 
-		std::tstringstream ss;	// rtv channel
+		std::tstringstream ss;	// channel
 		ss<<i;
-		std::tstringstream ss2;	// rtv manager index
+		std::tstringstream ss2;	// manager index
 		ss2<<m_nChan;
 		std::tstring csPipeName= m_csPipeName+_T(":")+ss2.str()+_T(":")+ss.str(); // new channel pipe name
-		CChannelSerial* pcChan= new CChannelSerial(csPipeName.c_str(), i, sChanInit, sBase.nError, llStart);
+		CChannelSerial* pcChan= new CChannelSerial(csPipeName.c_str(), (int)i, sChanInit, sBase.nError, llStart);
 		if (!sBase.nError)
 		{
 			m_acSerialDevices[i]= pcChan;
@@ -161,7 +161,7 @@ void CManagerSerial::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 			{
 				pBaseO->sBaseIn.dwSize= sizeof(SBaseOut);
 				pBaseO->sBaseIn.eType= eResponseExL;
-				pBaseO->sBaseIn.nChan= i;
+				pBaseO->sBaseIn.nChan= (int)i;
 				pBaseO->sBaseIn.nError= 0;
 				pBaseO->llLargeInteger= llStart;
 				pBaseO->bActive= true;
@@ -543,8 +543,8 @@ DWORD CChannelSerial::ThreadProc()
 			if (((SSerialData*)((char*)sPacket->psSerialData+sizeof(SBase)))->bStop)
 			{
 				int i= nPos;
-				for (; i<nPos+dwRead && (m_acReadBuffer[i]!=((SSerialData*)((char*)sPacket->psSerialData+sizeof(SBase)))->cStop);++i);
-				bCompleted= i<nPos+dwRead;
+				for (; i<nPos+(int)dwRead && (m_acReadBuffer[i]!=((SSerialData*)((char*)sPacket->psSerialData+sizeof(SBase)))->cStop);++i);
+				bCompleted= i<nPos+(int)dwRead;
 			} else
 				bCompleted= nPos+dwRead == ((SSerialData*)((char*)sPacket->psSerialData+sizeof(SBase)))->dwSize;
 			nPos+= dwRead;
@@ -670,9 +670,9 @@ DWORD CChannelSerial::ThreadProc()
 		dwWait= INFINITE;
 		dCurrTime= m_cTimer.Seconds();
 		if (dWDur)
-			dwWait= (dWDur-(dCurrTime-dWStart))<0.004?4:ceil(1000*(dWDur-(dCurrTime-dWStart)));
+			dwWait= (DWORD)((dWDur-(dCurrTime-dWStart))<0.004?4:ceil(1000*(dWDur-(dCurrTime-dWStart))));
 		if (dRDur)
-			dwWait= min((dRDur-(dCurrTime-dRStart))<0.004?4:ceil(1000*(dRDur-(dCurrTime-dRStart))), dwWait);
+			dwWait= (DWORD)min((dRDur-(dCurrTime-dRStart))<0.004?4:ceil(1000*(dRDur-(dCurrTime-dRStart))), dwWait);
 	}
 
 	sBaseOut.sBaseIn.dwSize= sizeof(SBaseIn);

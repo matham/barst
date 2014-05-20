@@ -608,12 +608,12 @@ void CADCPeriph::ExtractData()
 					m_psDataHeader->dwPos= m_dwPos++;
 					m_dwAmountRead += m_psDataHeader->dwCount1+m_psDataHeader->dwCount2;
 					if (m_dwSpaceUsed)
-						m_psDataHeader->fSpaceFull = (m_psDataHeader->dwCount1 + m_psDataHeader->dwCount2) * cADCSize * 8 / (double)((m_sInit.ucDataBits + 2) * m_dwSpaceUsed);
+						m_psDataHeader->fSpaceFull = (float)((m_psDataHeader->dwCount1 + m_psDataHeader->dwCount2) * cADCSize * 8 / (double)((m_sInit.ucDataBits + 2) * m_dwSpaceUsed));
 					else
 						m_psDataHeader->fSpaceFull = 0.0;
 					m_dwSpaceUsed = 0;
 					m_psDataHeader->fTimeWorked = m_fTimeWorked;
-					m_psDataHeader->fDataRate = (m_psDataHeader->dwCount1 + m_psDataHeader->dwCount2) / (double)(GetTickCount() - m_dwStartRead) * 1000;
+					m_psDataHeader->fDataRate = (float)((m_psDataHeader->dwCount1 + m_psDataHeader->dwCount2) / (double)(GetTickCount() - m_dwStartRead) * 1000);
 					m_psDataHeader->fDataRate /= ((m_sInit.bChan1 && m_sInit.bChan2)?2:1);
 					m_dwStartRead = GetTickCount();
 					m_sData.pHead = m_psDataHeader;

@@ -135,7 +135,7 @@ void CManagerFTDI::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 							sizeof(m_asFTChanInfo[i].Description)-strlen(m_asFTChanInfo[i].Description));
 						memset(&m_asFTChanInfo[i].SerialNumber[strlen(m_asFTChanInfo[i].SerialNumber)], 0, 
 							sizeof(m_asFTChanInfo[i].SerialNumber)-strlen(m_asFTChanInfo[i].SerialNumber));
-						size_t j= 0;
+						int j= 0;
 						for (;j<m_acFTDevices.size(); ++j)	// all open devices
 						{
 							if (m_acFTDevices[j])	// may be null
@@ -234,7 +234,7 @@ void CManagerFTDI::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 	{
 		bRes= false;
 		sBase.eType= eSet;
-		size_t i= 0;
+		int i= 0;
 		LARGE_INTEGER llStart;
 		for (; i<m_acFTDevices.size() && m_acFTDevices[i]; ++i);	// get index where we add new channel
 		if (i == m_acFTDevices.size())
@@ -823,7 +823,7 @@ DWORD CChannelFTDI::ThreadProc()
 
 	while (!bDone)
 	{
-		switch (dwRes= WaitForMultipleObjects(m_ahEvents.size(), &m_ahEvents[0], FALSE, INFINITE))
+		switch (dwRes= WaitForMultipleObjects((DWORD)m_ahEvents.size(), &m_ahEvents[0], FALSE, INFINITE))
 		{
 		case WAIT_OBJECT_0:	// m_hStop
 			bDone= true;

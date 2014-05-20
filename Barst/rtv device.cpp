@@ -3,8 +3,6 @@
 #include "named pipes.h"
 #include "rtv device.h"
 #include "misc tools.h"
-#include "AngeloRTVType_def.h"
-#include "Angelo.h"
 
 short (PASCAL *lpf_AngeloRTV_Initial)(unsigned short PortNo)= NULL;	//
 short (PASCAL *lpf_AngeloRTV_Close)(unsigned short PortNo)= NULL;	//
