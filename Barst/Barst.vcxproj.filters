@@ -60,10 +60,10 @@
     <ClInclude Include="serial device.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="rtv device.h">
+    <ClInclude Include="mcdaq_device.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="serial device.h">
+    <ClInclude Include="cbw.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -96,6 +96,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="serial device.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mcdaq_device.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

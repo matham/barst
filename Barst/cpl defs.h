@@ -25,7 +25,7 @@
 
 #define	BAD_INPUT_PARAMS	1
 #define	NO_SYS_RESOURCE		2	// out of memory, etc.
-#define	ALREADY_OPEN		3	// tried to open device etc. that was already opened.
+#define	ALREADY_OPEN		3	// tried to open device etc. that was already opened. or made request already pending
 #define	SIZE_MISSMATCH		4	// size of massage doesn't match expected size.
 #define	INVALID_CHANN		5	// channel requested is not set, out of range etc.
 #define UNKWN_ERROR			6
@@ -47,7 +47,8 @@
 	ranges. These macros convert those error codes so they are within the range noted next to them. */
 #define FT_ERROR(x, nTemp) (((nTemp= x)!=0)?(nTemp + 100):0)	// 101 + 1-19 = (101 to 200)
 #define RTV_ERROR(x, nTemp) (((nTemp= -x)!=0)?(nTemp + 200):0)	// 201 + 1-201 = (201 to 500)
-#define WIN_ERROR(x, nTemp) (((nTemp= x)!=0)?(nTemp + 1000):0)	// 1001 + ? = (1001 to ?)
+#define MCDAQ_ERROR(x, nTemp) (((nTemp= x)!=0)?(nTemp + 500):0)	// 101 + 1-19 = (501 to 1601)
+#define WIN_ERROR(x, nTemp) (((nTemp= x)!=0)?(nTemp + 10000):0)	// 10001 + ? = (10001 to ?)
 
 
 /** Provides a general way to compile this project in unicode or multi-byte. Currently only
@@ -82,12 +83,12 @@ enum EQueryType
 	eSet,		// Sets something, typically sends target specific info following SBaseIn
 	eDelete,	// Deletes a channel or manager
 	ePassOn,	// Tells upper layer to passs data on to next layer
-	eData,		// SBaseIn followed by SBase and data
+	eData,		// SBaseIn followed by SBase and data, or just SBaseIn if that's the data
 	eTrigger,	// Used to make a device do something
 	eResponse,	// General response
 	eVersion,	// dwInfo parameter is the version #
-	eActivate,
-	eInactivate,
+	eActivate,	// Tells server to activate a device
+	eInactivate,	// Tells server to de-activate a device
 	/*** Cat B - SBaseOut ***/
 	eResponseEx,	// szName
 	eResponseExL,	// llLargeInteger
@@ -102,8 +103,8 @@ enum EQueryType
 	eFTDIMultiReadInit,	// SBase followed by SValveInit
 	eFTDIPinReadInit,	// SBase followed by SPinInit
 	eFTDIPinWriteInit,	// SBase followed by SPinInit
-	eRTVChanInit,
-	eSerialChanInit,
+	eRTVChanInit,		// SBase followed by SChanInitRTV
+	eSerialChanInit,	//  SBase followed by SChanInitSerial
 	// possible buffer types
 	eFTDIMultiWriteData,	// SBase followed by array of multi write data in the form of SValveData
 	eADCData,					// SADCData struct (only from sBase ahead, sDataBase has its own eType)
@@ -111,15 +112,19 @@ enum EQueryType
 	eFTDIPinWDataArray,			// SBase followed by pin data in form of SPinWData array
 	eFTDIPinWDataBufArray,		// SBase followed by a SPinWData followed by pin data in form of unsigned char array
 	eFTDIPinRDataArray,			// SBase followed by pin data read in form of unsigned char array
-	eRTVImageBuf,
-	eSerialWriteData,
-	eSerialReadData,
+	eRTVImageBuf,				// SBase followed by a RTV image buffer.
+	eSerialWriteData,			// SBase followed by SSerialData followed by data to be written
+	eSerialReadData,			/// SBase followed by SSerialData
+	eMCDAQChanInit,		// SBase followed by SChanInitMCDAQ
+	eMCDAQWriteData,	// SBase followed by SMCDAQWData
+	eCancelReadRequest,	// SBaseIn indicating that a previous read request by the pipe should be canceld
 
 
 	// managers - the values that eType2 can take
 	eFTDIMan= 1000,
 	eRTVMan,
 	eSerialMan,
+	eMCDAQMan,
 };
 
 
@@ -484,22 +489,26 @@ typedef struct SChanInitRTV
 /** Struct used to initialize a Comm port. */
 typedef struct SChanInitSerial
 {
-	TCHAR	szPortName[SERIAL_MAX_LENGTH];
-	DWORD	dwMaxStrWrite;
-	DWORD	dwMaxStrRead;
-	DWORD	dwBaudRate;
+	TCHAR	szPortName[SERIAL_MAX_LENGTH];	// The name of the port, e.g. COM1
+	DWORD	dwMaxStrWrite;					// max size of any data to be written
+	DWORD	dwMaxStrRead;					// max size of any data to be read
+	DWORD	dwBaudRate;						// baud rate with which to open the channel
+	// The number of stop bits to use. Can be one of 0, 1, or 2. 0 means 1 bit,
+    // 1, means 1.5 bits, and 2 means 2 bit.
 	unsigned char	ucStopBits;
 	unsigned char	ucParity;
+	// The number of bits in the bytes transmitted and received. Can be between
+    // 4 and 8, including 4 and 8.
 	unsigned char	ucByteSize;
 } SChanInitSerial;
 
-
+/** Struct used for sending and reading data from server. **/
 typedef struct SSerialData
 {
-	DWORD	dwSize;
+	DWORD	dwSize;		// size of data to read/write
 	DWORD	dwTimeout;	// 0 means infinite wait
-	char	cStop;
-	bool	bStop;
+	char	cStop;		// when reading, the character on which to stop
+	bool	bStop;		// if cStop is used, when reading
 } SSerialData;
 
 
@@ -518,6 +527,32 @@ typedef struct _ft_device_list_info_node_os {
 	unsigned __int64 ftHandle;
 } FT_DEVICE_LIST_INFO_NODE_OS;
 
+
+
+
+
+/************* MCDAQ device****************/
+
+
+/** Struct used to initialize a MCDAQ device. */
+typedef struct SChanInitMCDAQ
+{
+	unsigned char	ucDirection;	// 0 for reading, 1 for writing, 2 for read/write
+	unsigned short	usInitialVal;	// the initial value to set the port to, when writing
+	bool			bContinuous;	// when reading, whether it occurs continuously
+} SChanInitMCDAQ;
+
+
+/** Struct used for requesting a write from the server. **/
+typedef struct SMCDAQWData
+{
+	unsigned short	usValue;	// the value to output.
+	/*	Which of the output bits to update. This lets you update only some of the output bits
+		while not changing the others. For instance, if you only want to update bit 3 with this
+		struct, then you set usBitSelect to 0x0008 and only bit 3 will be changed. The other
+		bits will remain as is.*/
+	unsigned short	usBitSelect;
+} SMCDAQWData;
 
 
 
