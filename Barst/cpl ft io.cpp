@@ -146,7 +146,7 @@ bool CMultiWPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 			m_bUpdated= false;	// done updating
 			m_bChanged= true;
 			m_nProcessed= m_allIds.GetSize();	// current number of updates proccesed
-			m_dInitial= m_pcTimer->Seconds();	// time right before writing
+			m_dInitial= g_cTimer.Seconds();	// time right before writing
 			ResetEvent(m_hNext);
 		}
 		LeaveCriticalSection(&m_hDataSafe);
@@ -374,7 +374,7 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 				//++k;
 			}
 			m_bRead= true;
-			m_dInitial= m_pcTimer->Seconds();	// time right before reading
+			m_dInitial= g_cTimer.Seconds();	// time right before reading
 		}
 	} else if (m_eState == eActive && eReason == ePostWrite) // let user know if error and set buffer to default.
 	{
@@ -675,7 +675,7 @@ bool CPinWPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 			m_bUpdated= false;	// done updating
 			m_bChanged= true;
 			m_nProcessed= m_allIds.GetSize();	// current number of updates proccesed
-			m_dInitial= m_pcTimer->Seconds();	// time right before writing
+			m_dInitial= g_cTimer.Seconds();	// time right before writing
 			ResetEvent(m_hNext);
 		}
 		LeaveCriticalSection(&m_hDataSafe);
@@ -929,7 +929,7 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 		if (m_nProcessed)
 		{
 			m_bRead= true;
-			m_dInitial= m_pcTimer->Seconds();	// time right before reading
+			m_dInitial= g_cTimer.Seconds();	// time right before reading
 		}
 	} else if (m_eState == eActive && eReason == ePostWrite) // let user know if error
 	{

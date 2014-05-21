@@ -320,7 +320,7 @@ bool CADCPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFTD
 			LeaveCriticalSection(&m_hStateSafe);
 		} else  if (m_eState == eActive)
 		{
-			m_dTimeTemp = m_pcTimer->Seconds();	// get start time when we're about to read
+			m_dTimeTemp = g_cTimer.Seconds();	// get start time when we're about to read
 		}
 		break;
 	case ePostWrite:

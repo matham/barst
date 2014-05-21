@@ -635,7 +635,7 @@ DWORD CChannelSerial::ThreadProc()
 				SetEvent(m_hReadEvent);
 			if (sPacket && bValid)
 			{
-				sBaseOut.dDouble= m_cTimer.Seconds();
+				sBaseOut.dDouble= g_cTimer.Seconds();
 				sData.dwSize= sizeof(SBaseOut)+sizeof(SBase)+sizeof(SSerialData)+sizeof(char)*nPos;
 				sBaseOut.sBaseIn.dwSize= sData.dwSize;
 				SBaseOut* pBase= (SBaseOut*)m_pcMemPool->PoolAcquire(sData.dwSize);
@@ -664,7 +664,7 @@ DWORD CChannelSerial::ThreadProc()
 				SetEvent(m_hWriteEvent);
 			if (sPacket && bValid)
 			{
-				sBaseOut.dDouble= m_cTimer.Seconds();
+				sBaseOut.dDouble= g_cTimer.Seconds();
 				sData.dwSize= sizeof(SBaseOut)+sizeof(SBase)+sizeof(SSerialData);
 				sBaseOut.sBaseIn.dwSize= sData.dwSize;
 				SBaseOut* pBase= (SBaseOut*)m_pcMemPool->PoolAcquire(sData.dwSize);

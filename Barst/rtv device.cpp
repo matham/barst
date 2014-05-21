@@ -526,7 +526,7 @@ void CChannelRTV::NextFrame(unsigned char* aucData)
 	((SBaseOut*)sData.pHead)->sBaseIn.nChan= m_usChan;
 	((SBaseOut*)sData.pHead)->sBaseIn.nError= 0;
 	((SBaseOut*)sData.pHead)->bActive= true;
-	((SBaseOut*)sData.pHead)->dDouble= m_cTimer.Seconds();
+	((SBaseOut*)sData.pHead)->dDouble= g_cTimer.Seconds();
 	((SBase*)((char*)sData.pHead+sizeof(SBaseOut)))->dwSize= sizeof(SBase)+m_sChanInit.dwBuffSize;
 	((SBase*)((char*)sData.pHead+sizeof(SBaseOut)))->eType= eRTVImageBuf;
 	memcpy((char*)sData.pHead+sizeof(SBaseOut)+sizeof(SBase), aucData, m_sChanInit.dwBuffSize);

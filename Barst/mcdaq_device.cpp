@@ -449,7 +449,7 @@ DWORD CChannelMCDAQ::ThreadProc()
 			sBaseOut.sBaseIn.nError = MCDAQ_ERROR(lpf_cbDOut(m_usChan, AUXPORT,
 				(psPacket->psData->usBitSelect & psPacket->psData->usValue) |
 				(~psPacket->psData->usBitSelect & m_usLastWrite)), sBaseOut.sBaseIn.nError);
-			sBaseOut.dDouble= m_cTimer.Seconds();
+			sBaseOut.dDouble= g_cTimer.Seconds();
 			sData.dwSize= sizeof(SBaseOut);
 			sBaseOut.sBaseIn.dwSize= sData.dwSize;
 			SBaseOut* pBase= (SBaseOut*)m_pcMemPool->PoolAcquire(sData.dwSize);
@@ -468,7 +468,7 @@ DWORD CChannelMCDAQ::ThreadProc()
 			ResetEvent(m_hReadEvent);	// event won't be set again as long as queue is not empty
 			sBaseOut.sBaseIn.nError = MCDAQ_ERROR(lpf_cbDIn(m_usChan, AUXPORT, &usData), sBaseOut.sBaseIn.nError);
 			sBaseIn.dwInfo = usData;
-			sBaseOut.dDouble= m_cTimer.Seconds();
+			sBaseOut.dDouble= g_cTimer.Seconds();
 			sData.dwSize = sizeof(SBaseOut) + sizeof(SBaseIn);
 			sBaseOut.sBaseIn.dwSize = sData.dwSize;
 			EnterCriticalSection(&m_hReadSafe);
