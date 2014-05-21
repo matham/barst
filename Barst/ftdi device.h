@@ -7,6 +7,7 @@
 #include "base classses.h"
 #include "cpl queue.h"
 #include "misc tools.h"
+#include "ftd2xx.h"
 
 class CChannelFTDI;
 class CPeriphFTDI;

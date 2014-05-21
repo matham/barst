@@ -231,10 +231,16 @@ void CMainManager::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 
 int CMainManager::Run(int argc, TCHAR* argv[])
 {
-	if (argc != 4)
+	if (argc != 4 && argc != 5)
 		return BAD_INPUT_PARAMS;
 	DWORD dwBuffSizeIn, dwBuffSizeOut;	// size of pipe buffers
 	std::tstringstream in(argv[2]), out(argv[3]);
+	g_llMaxQueueBytes = -1;
+	if (argc == 5)
+	{
+		std::tstringstream ssMaxBytes(argv[4]);
+		ssMaxBytes >> g_llMaxQueueBytes;	// queue limit, -1 means 
+	}
 	in >> dwBuffSizeIn;		// user writing to pipe size
 	out >> dwBuffSizeOut;	// user reading from pipe
 	m_csPipe= argv[1];		// pipe name to use
@@ -260,6 +266,7 @@ int CMainManager::Run(int argc, TCHAR* argv[])
 
 int _tmain(int argc, _TCHAR* argv[])
 {
+	InitializeQueueLimit();
 	g_cTimer.ResetTimer();
 	ShowWindow(GetConsoleWindow(), SW_HIDE);
 	CMainManager* pMainManager= new CMainManager;

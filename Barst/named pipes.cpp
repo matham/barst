@@ -4,6 +4,40 @@
 #include "Log buffer.h"
 
 
+
+__int64 g_llMaxQueueBytes = -1;
+
+__int64 s_llQueueBytes = 0;
+CRITICAL_SECTION s_hLimitSafe;
+
+void InitializeQueueLimit()
+{
+	InitializeCriticalSection(&s_hLimitSafe);
+}
+
+inline bool IncreaseQueue(DWORD dwSize)
+{
+	bool bRes = 0;
+	if (g_llMaxQueueBytes < 0)
+		return 1;
+	EnterCriticalSection(&s_hLimitSafe);
+	if (s_llQueueBytes + dwSize <= g_llMaxQueueBytes)
+	{
+		s_llQueueBytes += dwSize;
+		bRes = 1;
+	}
+	LeaveCriticalSection(&s_hLimitSafe);
+	return bRes;
+}
+
+inline void DecreaseQueue(DWORD dwSize)
+{
+	EnterCriticalSection(&s_hLimitSafe);
+	s_llQueueBytes -= dwSize;
+	LeaveCriticalSection(&s_hLimitSafe);
+}
+
+
 /////////////////////////////////////////////////
 // Starting point of queue thread
 DWORD WINAPI PipeProc(LPVOID lpParameter)
@@ -252,6 +286,7 @@ DWORD CPipeServer::ThreadProc()
 							{
 								sData= m_aPipes[i]->cWriteQueue.Front(true, bRes);
 								if (sData)
+									DecreaseQueue(sData->dwSize);
 									sData->pDevice->Result(sData->pHead, false);
 								delete sData;
 							}
@@ -293,6 +328,7 @@ DWORD CPipeServer::ThreadProc()
 						{
 							sData= m_aPipes[i]->cWriteQueue.Front(true, bRes);
 							if (sData)
+								DecreaseQueue(sData->dwSize);
 								sData->pDevice->Result(sData->pHead, false);
 							delete sData;
 						}
@@ -323,6 +359,7 @@ DWORD CPipeServer::ThreadProc()
 				sData->pDevice->Result(sData->pHead, GetOverlappedResult(m_aPipes[i]->hPipe, &m_aPipes[i]->oWriteOverlap, &dwBytes, FALSE) 
 					&& dwBytes == sData->dwSize);
 				m_aPipes[i]->fWritePending= FALSE;
+				DecreaseQueue(sData->dwSize);
 				delete m_aPipes[i]->cWriteQueue.Front(true, bNotEmpty);
 				if (m_aPipes[i]->cWriteQueue.GetSize())	// write next element
 					SetEvent(m_aPipes[i]->hWriteEvent);
@@ -331,6 +368,7 @@ DWORD CPipeServer::ThreadProc()
 				if (WriteFile(m_aPipes[i]->hPipe, sData->pHead, sData->dwSize, &dwBytes, &m_aPipes[i]->oWriteOverlap))
 				{	// success
 					sData->pDevice->Result(sData->pHead, true);
+					DecreaseQueue(sData->dwSize);
 					delete m_aPipes[i]->cWriteQueue.Front(true, bNotEmpty);
 					if (m_aPipes[i]->cWriteQueue.GetSize())	// write next element
 						SetEvent(m_aPipes[i]->hWriteEvent);
@@ -339,6 +377,7 @@ DWORD CPipeServer::ThreadProc()
 				else
 				{
 					sData->pDevice->Result(sData->pHead, false);
+					DecreaseQueue(sData->dwSize);
 					delete m_aPipes[i]->cWriteQueue.Front(true, bNotEmpty);
 					if (m_aPipes[i]->cWriteQueue.GetSize())	// write next element
 						SetEvent(m_aPipes[i]->hWriteEvent);
@@ -378,6 +417,7 @@ void CPipeServer::Close()
 			SData* pData= m_aPipes[i]->cWriteQueue.Front(true, bNotEmpty);
 			if (pData)
 			{
+				DecreaseQueue(pData->dwSize);
 				pData->pDevice->Result(pData->pHead, false);
 				delete pData;
 			}
@@ -413,8 +453,11 @@ int CPipeServer::SendData(const SData *pData, __int64 llId)
 	{
 		if (m_aPipes[i]->llId == llId)
 		{
-			m_aPipes[i]->cWriteQueue.Push(new SData(*pData));
-			fRes= FALSE;
+			if (IncreaseQueue(pData->dwSize))
+			{
+				m_aPipes[i]->cWriteQueue.Push(new SData(*pData));
+				fRes= FALSE;
+			}
 			break;
 		}
 	}

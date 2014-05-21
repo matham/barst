@@ -6,7 +6,6 @@
 #include <tchar.h>
 #include <string>
 #include <Windows.h>	// we need to include windows to include ftd2xx.h
-#include "ftd2xx.h"		// for the error codes and the FT_DEVICE_LIST_INFO_NODE struct defintion
 
 #define	BARST_VERSION		20000	// it's 2.00.00
 

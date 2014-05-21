@@ -13,6 +13,12 @@
 #include <sstream>
 
 
+extern __int64 g_llMaxQueueBytes;
+extern void InitializeQueueLimit();
+
+
+
+
 // we proceed with states downwards
 enum ePipeStatus{
 	kCreated,		// pipe was just created and isn't yet connected
@@ -85,7 +91,9 @@ public:
 		dwBuffSizeIn is the max buffer that can be written by the client to the server at once. 
 		dwBuffSizeOut is the max buffer that can be read by the client and written by the server at once. 
 		cDevice is the device that this pipe will call when a client writes to the pipe.
-		cLogBuffer is NULL currently, but would contain a log object. */
+		cLogBuffer is NULL currently, but would contain a log object.  If g_llMaxQueueBytes is not
+		-1, data which would result in larger values than g_llMaxQueueBytes will be simply
+		discarded without error.*/
 	int Init(const TCHAR szPipe[], int nPipes, DWORD dwBuffSizeIn, DWORD dwBuffSizeOut, CDevice *cDevice, 
 		CLogBuffer *cLogBuffer);
 	int SendData(const SData *pData, __int64 llId);
