@@ -31,11 +31,11 @@ BOOL GetProcAddresses(HINSTANCE *hLibrary, LPCTSTR lpszLibrary, INT nCount, ... 
 /** Defines a high precision timer. Because of overflow, we allow the timer to be reset so that
 	we count time relative to when it was last reset as opposed to when the computer was last
 	started etc. The time it takes to overflow in this case can vary depending on the precision
-	of the timer, in upwards of about a month. Since we return time relative to some other time,
-	we can use the time of that starting point in other instances of this class to calculate
-	time raltive to that offset. 
+	of the timer, which according to windows is no less than 100 years. Since we return time relative
+	to some other time, we can use the time of that starting point in other instances of this class
+	to calculate time relative to that offset.
 	
-	This class can use either the QueryPerformanceCounter() or the timeGetTime() function.
+	This class can uses the QueryPerformanceCounter() and therefore assumes at least XP.
 	The assumption implicit in the Seconds(LARGE_INTEGER llStart) and TimeOf(LARGE_INTEGER llTime)
 	functions is that the instance used to generate the llStart or llTime value used the same
 	time function as this instance otherwise they would be incompatible. The reason this 
@@ -69,7 +69,9 @@ public:
 private:
     LARGE_INTEGER   m_llFrequency;          // Performance counter frequency or zero
 	LARGE_INTEGER	m_llStart;				// The value of the performance counter when reset was called.
-    DWORD           m_uiResolution;         // Resolution for multimedia system time
 };
+
+
+extern CTimer g_cTimer;
 
 #endif

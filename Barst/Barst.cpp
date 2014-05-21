@@ -10,6 +10,7 @@
 #include "rtv device.h"
 #include "serial device.h"
 #include "mcdaq_device.h"
+#include "misc tools.h"
 
 
 
@@ -169,6 +170,31 @@ void CMainManager::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 			sBase.nError= INVALID_MAN;
 			break;
 		}
+	} else if (((SBaseIn*)pHead)->nChan == -1 && ((SBaseIn*)pHead)->eType == eQuery)
+	{
+		sData.dwSize = sizeof(SBaseIn) + sizeof(SBase) + sizeof(SPerfTime);
+		void *pHead = sData.pHead = m_pcMemPool->PoolAcquire(sData.dwSize);
+		if (pHead)
+		{
+			((SBaseIn*)pHead)->dwSize= sizeof(SBaseIn) + sizeof(SBase) + sizeof(SPerfTime);
+			((SBaseIn*)pHead)->eType= eQuery;
+			((SBaseIn*)pHead)->nChan= -1;
+			((SBaseIn*)pHead)->nError= 0;
+			pHead = (char*)pHead + sizeof(SBaseIn);
+
+			((SBase *)pHead)->dwSize = sizeof(SPerfTime) + sizeof(SBase);
+			((SBase *)pHead)->eType = eServerTime;
+			pHead= (char *)pHead + sizeof(SBase);
+
+			FILETIME sTime;
+			ULARGE_INTEGER ulTime;
+			((SPerfTime *)pHead)->dRelativeTime = g_cTimer.Seconds();
+			GetSystemTimeAsFileTime(&sTime);
+			ulTime.HighPart = sTime.dwHighDateTime;
+			ulTime.LowPart = sTime.dwLowDateTime;
+			((SPerfTime *)pHead)->dUTCTime = ulTime.QuadPart / 10000000.0;
+			m_pcComm->SendData(&sData, llId);
+		}
 	} else if (((SBaseIn*)pHead)->nChan < 0 || ((SBaseIn*)pHead)->nChan >= m_acManagers.size() ||
 		!m_acManagers[((SBaseIn*)pHead)->nChan])	// verify manager exists
 	{
@@ -234,6 +260,7 @@ int CMainManager::Run(int argc, TCHAR* argv[])
 
 int _tmain(int argc, _TCHAR* argv[])
 {
+	g_cTimer.ResetTimer();
 	ShowWindow(GetConsoleWindow(), SW_HIDE);
 	CMainManager* pMainManager= new CMainManager;
 	int nRes= pMainManager->Run(argc, argv);	// program sits here until stopped

@@ -8,9 +8,6 @@
 #include "misc tools.h"
 
 
-static CTimer s_cTimer;
-
-
 inline int BarstOpenPipe(const TCHAR* szPipe, DWORD dwAccess, DWORD dwTimeout, HANDLE* phPipe)
 {
 	if (!szPipe || !phPipe)
@@ -1146,7 +1143,7 @@ extern "C"	BARSTDLL_API int __stdcall BarstSerialRead(HANDLE hPipe, int nChan, S
 
 extern "C"	BARSTDLL_API double __stdcall BarstCurrentTime(LARGE_INTEGER llStart)
 {
-	return s_cTimer.Seconds(llStart);
+	return g_cTimer.Seconds(llStart);
 }
 
 

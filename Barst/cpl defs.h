@@ -118,6 +118,7 @@ enum EQueryType
 	eMCDAQChanInit,		// SBase followed by SChanInitMCDAQ
 	eMCDAQWriteData,	// SBase followed by SMCDAQWData
 	eCancelReadRequest,	// SBaseIn indicating that a previous read request by the pipe should be canceld
+	eServerTime,		// SBaseIn followed by SBase followed by SPerfTime
 
 
 	// managers - the values that eType2 can take
@@ -168,6 +169,12 @@ typedef struct SBaseOut
 
 
 
+
+typedef struct SPerfTime
+{
+	double		dRelativeTime;
+	double		dUTCTime;
+} SPerfTime;
 
 
 

@@ -3,6 +3,10 @@
 #include <limits.h>
 #include <MMSystem.h>
 
+/** Global timer. **/
+CTimer g_cTimer;
+
+
 BOOL GetProcAddresses(HINSTANCE *hLibrary, LPCTSTR lpszLibrary, INT nCount, ... )
 {
     va_list va;
@@ -40,105 +44,51 @@ BOOL GetProcAddresses(HINSTANCE *hLibrary, LPCTSTR lpszLibrary, INT nCount, ... 
 
 CTimer::CTimer()
 {
-	m_uiResolution = 1;
-    while (timeBeginPeriod(m_uiResolution) == TIMERR_NOCANDO)
-		if (++m_uiResolution == 20)
-			break;
-
 	ResetTimer();
 }
 
 CTimer::~CTimer()
 {
-    timeEndPeriod(m_uiResolution);
 }
 
 double CTimer::Seconds() const
 {
-    double dTime;
-    if (m_llFrequency.QuadPart != 0)	// Is performance clock availible?
-    {
-        LARGE_INTEGER llTime;
-        QueryPerformanceCounter(&llTime);     // get current time
+    LARGE_INTEGER llTime;
+    QueryPerformanceCounter(&llTime);     // get current time
 
-		// Calc elapsed ticks since reset.
-		if (llTime.QuadPart < m_llStart.QuadPart)	// It overflowed
-			dTime = double(llTime.QuadPart+(LLONG_MAX-m_llStart.QuadPart));
-		else
-			dTime = double(llTime.QuadPart-m_llStart.QuadPart);
-		dTime /= double(m_llFrequency.QuadPart); // Convert to secs
-    }
-    else
-	{
-		DWORD dwTime= timeGetTime();	// Current time in ms
-
-		if (dwTime<m_llStart.LowPart)	// It overflowed
-			dTime = double(dwTime+(ULONG_MAX-m_llStart.LowPart));
-		else
-			dTime = double(dwTime-m_llStart.LowPart);
-        dTime /= 1000.0;	// Convert to secs.
-	}
-    return dTime;
+	// Calc elapsed ticks since reset.
+	if (llTime.QuadPart < m_llStart.QuadPart)	// It overflowed
+		llTime.QuadPart = (llTime.QuadPart + (LLONG_MAX - m_llStart.QuadPart));
+	else
+		llTime.QuadPart = (llTime.QuadPart - m_llStart.QuadPart);
+    return llTime.QuadPart * (1.0 / m_llFrequency.QuadPart); // Convert to secs
 }
 
 double CTimer::Seconds(LARGE_INTEGER llStart) const
 {
-    double dTime;
-    if (m_llFrequency.QuadPart != 0)	// Is performance clock availible?
-    {
-        LARGE_INTEGER llTime;
-        QueryPerformanceCounter(&llTime);     // get current time
+    LARGE_INTEGER llTime;
+    QueryPerformanceCounter(&llTime);     // get current time
 
-		// Calc elapsed ticks since reset.
-		if (llTime.QuadPart < llStart.QuadPart)	// It overflowed
-			dTime = double(llTime.QuadPart+(LLONG_MAX-llStart.QuadPart));
-		else
-			dTime = double(llTime.QuadPart-llStart.QuadPart);
-		dTime /= double(m_llFrequency.QuadPart); // Convert to secs
-    }
-    else
-	{
-		DWORD dwTime= timeGetTime();	// Current time in ms
-
-		if (dwTime<llStart.LowPart)	// It overflowed
-			dTime = double(dwTime+(ULONG_MAX-llStart.LowPart));
-		else
-			dTime = double(dwTime-llStart.LowPart);
-        dTime /= 1000.0;	// Convert to secs.
-	}
-    return dTime;
+	// Calc elapsed ticks since reset.
+	if (llTime.QuadPart < llStart.QuadPart)	// It overflowed
+		llTime.QuadPart = (llTime.QuadPart + (LLONG_MAX - llStart.QuadPart));
+	else
+		llTime.QuadPart = (llTime.QuadPart - llStart.QuadPart);
+    return llTime.QuadPart * (1.0 / m_llFrequency.QuadPart); // Convert to secs
 }
 
 double CTimer::TimeOf(LARGE_INTEGER llTime) const
 {
-    double dTime;
-    if (m_llFrequency.QuadPart != 0)	// Is performance clock availible?
-    {
-		// Calc elapsed ticks since reset.
-		if (llTime.QuadPart < m_llStart.QuadPart)	// It overflowed
-			dTime = double(llTime.QuadPart+(LLONG_MAX-m_llStart.QuadPart));
-		else
-			dTime = double(llTime.QuadPart-m_llStart.QuadPart);
-		dTime /= double(m_llFrequency.QuadPart); // Convert to secs
-    }
-    else
-	{
-		if (llTime.LowPart<m_llStart.LowPart)	// It overflowed
-			dTime = double(llTime.LowPart+(ULONG_MAX-m_llStart.LowPart));
-		else
-			dTime = double(llTime.LowPart-m_llStart.LowPart);
-        dTime /= 1000.0;	// Convert to secs.
-	}
-    return dTime;
+	// Calc elapsed ticks since reset.
+	if (llTime.QuadPart < m_llStart.QuadPart)	// It overflowed
+		llTime.QuadPart = (llTime.QuadPart + (LLONG_MAX - m_llStart.QuadPart));
+	else
+		llTime.QuadPart = (llTime.QuadPart - m_llStart.QuadPart);
+    return llTime.QuadPart * (1.0 / m_llFrequency.QuadPart); // Convert to secs
 }
 
 void CTimer::ResetTimer()
 {	// Get most current frequency in case power states were switched etc.
-	if (!QueryPerformanceFrequency(&m_llFrequency))
-        m_llFrequency.QuadPart = 0;
-
-	if (m_llFrequency.QuadPart != 0)		// get current/start time
-        QueryPerformanceCounter(&m_llStart);
-    else
-		m_llStart.LowPart= timeGetTime();
+	QueryPerformanceFrequency(&m_llFrequency);
+    QueryPerformanceCounter(&m_llStart);	// get current/start time
 }
