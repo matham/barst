@@ -58,6 +58,23 @@ typedef struct SPipeResource
 		CloseHandle(hWriteEvent);
 	}
 
+	__int64 ClearQueue()
+	{
+		bool bNotEmpty;
+		__int64 llCount = 0;
+		while (cWriteQueue.GetSize())
+		{
+			SData* pData= cWriteQueue.Front(true, bNotEmpty);
+			if (pData)
+			{
+				llCount += pData->dwSize;
+				pData->pDevice->Result(pData->pHead, false);
+				delete pData;
+			}
+		}
+		return llCount;
+	}
+
 	void ResetResource()
 	{
 		memset(&oOverlap, 0, sizeof(OVERLAPPED));

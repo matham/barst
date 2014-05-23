@@ -15,25 +15,27 @@ void InitializeQueueLimit()
 	InitializeCriticalSection(&s_hLimitSafe);
 }
 
-inline bool IncreaseQueue(DWORD dwSize)
+inline bool IncreaseQueue(__int64 llSize)
 {
 	bool bRes = 0;
 	if (g_llMaxQueueBytes < 0)
 		return 1;
 	EnterCriticalSection(&s_hLimitSafe);
-	if (s_llQueueBytes + dwSize <= g_llMaxQueueBytes)
+	if (s_llQueueBytes + llSize <= g_llMaxQueueBytes)
 	{
-		s_llQueueBytes += dwSize;
+		s_llQueueBytes += llSize;
 		bRes = 1;
 	}
 	LeaveCriticalSection(&s_hLimitSafe);
 	return bRes;
 }
 
-inline void DecreaseQueue(DWORD dwSize)
-{
+inline void DecreaseQueue(__int64 llSize)
+{	
+	if (g_llMaxQueueBytes < 0)
+		return;
 	EnterCriticalSection(&s_hLimitSafe);
-	s_llQueueBytes -= dwSize;
+	s_llQueueBytes -= llSize;
 	LeaveCriticalSection(&s_hLimitSafe);
 }
 
@@ -185,6 +187,7 @@ DWORD CPipeServer::ThreadProc()
 					m_sStream.str(_T(""));
 				}
 				m_pcMemPool->PoolRelease(sPipeResource->pRead);
+				DecreaseQueue(sPipeResource->ClearQueue());
 				delete sPipeResource;	// automatically closes everything
 				bError= true;	// once error occured, don't open new handles
 			} else	// save it
@@ -240,6 +243,8 @@ DWORD CPipeServer::ThreadProc()
 						m_aPipes[i]->ResetResource();		// reset everything
 					} else
 					{
+						m_pcMemPool->PoolRelease(m_aPipes[i]->pRead);
+						DecreaseQueue(m_aPipes[i]->ClearQueue());
 						delete m_aPipes[i];
 						m_aPipes.erase(m_aPipes.begin()+i);
 						m_ahEvents.erase(m_ahEvents.begin()+2*i+1, m_ahEvents.begin()+2*i+3);
@@ -258,7 +263,9 @@ DWORD CPipeServer::ThreadProc()
 							m_aPipes[i]->ResetResource();		// reset everything
 						} else
 						{
-							delete m_aPipes[i];	// delete this pipe
+							m_pcMemPool->PoolRelease(m_aPipes[i]->pRead);
+							DecreaseQueue(m_aPipes[i]->ClearQueue());
+							delete m_aPipes[i];
 							m_aPipes.erase(m_aPipes.begin()+i);
 							m_ahEvents.erase(m_ahEvents.begin()+2*i+1, m_ahEvents.begin()+2*i+3);
 						}
@@ -294,7 +301,8 @@ DWORD CPipeServer::ThreadProc()
 						} else
 						{
 							m_pcMemPool->PoolRelease(m_aPipes[i]->pRead);
-							delete m_aPipes[i];	// delete this pipe
+							DecreaseQueue(m_aPipes[i]->ClearQueue());
+							delete m_aPipes[i];
 							m_aPipes.erase(m_aPipes.begin()+i);
 							m_ahEvents.erase(m_ahEvents.begin()+2*i+1, m_ahEvents.begin()+2*i+3);
 							--m_nConnected;
@@ -336,7 +344,8 @@ DWORD CPipeServer::ThreadProc()
 					} else
 					{
 						m_pcMemPool->PoolRelease(m_aPipes[i]->pRead);
-						delete m_aPipes[i];	// delete this pipe
+						DecreaseQueue(m_aPipes[i]->ClearQueue());
+						delete m_aPipes[i];
 						m_aPipes.erase(m_aPipes.begin()+i);
 						m_ahEvents.erase(m_ahEvents.begin()+2*i+1, m_ahEvents.begin()+2*i+3);
 						--m_nConnected;
@@ -411,19 +420,9 @@ void CPipeServer::Close()
 	}
 	for (size_t i= 0; i<m_aPipes.size();++i)
 	{
-		void* pHead= m_aPipes[i]->pRead;
-		while (m_aPipes[i]->cWriteQueue.GetSize())
-		{
-			SData* pData= m_aPipes[i]->cWriteQueue.Front(true, bNotEmpty);
-			if (pData)
-			{
-				DecreaseQueue(pData->dwSize);
-				pData->pDevice->Result(pData->pHead, false);
-				delete pData;
-			}
-		}
+		m_pcMemPool->PoolRelease(m_aPipes[i]->pRead);
+		DecreaseQueue(m_aPipes[i]->ClearQueue());
 		delete m_aPipes[i];
-		m_pcMemPool->PoolRelease(pHead);
 	}
 	m_aPipes.clear();
 	if (m_hDone) CloseHandle(m_hDone);
