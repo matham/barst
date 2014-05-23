@@ -153,34 +153,46 @@ void CManagerSerial::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 		sBase.eType= eSet;	// in case of error we do respond at end
 		SChanInitSerial sChanInit= *(SChanInitSerial*)((char*)pHead+sizeof(SBase)+sizeof(SBaseIn));
 		size_t i= 0;
-		for (; i<m_acSerialDevices.size() && m_acSerialDevices[i]; ++i);	// get index where we add new channel
-		if (i == m_acSerialDevices.size())
-			m_acSerialDevices.push_back(NULL);
-
-		std::tstringstream ss;	// channel
-		ss<<i;
-		std::tstringstream ss2;	// manager index
-		ss2<<m_nChan;
-		std::tstring csPipeName= m_csPipeName+_T(":")+ss2.str()+_T(":")+ss.str(); // new channel pipe name
-		CChannelSerial* pcChan= new CChannelSerial(csPipeName.c_str(), (int)i, sChanInit, sBase.nError, llStart);
+		for (i = 0; i<m_acSerialDevices.size(); ++i)
+		{
+			if (m_acSerialDevices[i] && _tcscmp(m_acSerialDevices[i]->m_sChanInit.szPortName, sChanInit.szPortName) == 0)
+			{
+				sBase.nChan = (int)i;
+				sBase.nError = ALREADY_OPEN;
+				break;
+			}
+		}
 		if (!sBase.nError)
 		{
-			m_acSerialDevices[i]= pcChan;
-			SBaseOut* pBaseO= (SBaseOut*)m_pcMemPool->PoolAcquire(sizeof(SBaseOut));
-			if (pBaseO)
+			for (i = 0; i<m_acSerialDevices.size() && m_acSerialDevices[i]; ++i);	// get index where we add new channel
+			if (i == m_acSerialDevices.size())
+				m_acSerialDevices.push_back(NULL);
+
+			std::tstringstream ss;	// channel
+			ss<<i;
+			std::tstringstream ss2;	// manager index
+			ss2<<m_nChan;
+			std::tstring csPipeName= m_csPipeName+_T(":")+ss2.str()+_T(":")+ss.str(); // new channel pipe name
+			CChannelSerial* pcChan= new CChannelSerial(csPipeName.c_str(), (int)i, sChanInit, sBase.nError, llStart);
+			if (!sBase.nError)
 			{
-				pBaseO->sBaseIn.dwSize= sizeof(SBaseOut);
-				pBaseO->sBaseIn.eType= eResponseExL;
-				pBaseO->sBaseIn.nChan= (int)i;
-				pBaseO->sBaseIn.nError= 0;
-				pBaseO->llLargeInteger= llStart;
-				pBaseO->bActive= true;
-				sData.pHead= pBaseO;
-				sData.dwSize= pBaseO->sBaseIn.dwSize;
-				m_pcComm->SendData(&sData, llId);
-			}
-		} else
-			delete pcChan;
+				m_acSerialDevices[i]= pcChan;
+				SBaseOut* pBaseO= (SBaseOut*)m_pcMemPool->PoolAcquire(sizeof(SBaseOut));
+				if (pBaseO)
+				{
+					pBaseO->sBaseIn.dwSize= sizeof(SBaseOut);
+					pBaseO->sBaseIn.eType= eResponseExL;
+					pBaseO->sBaseIn.nChan= (int)i;
+					pBaseO->sBaseIn.nError= 0;
+					pBaseO->llLargeInteger= llStart;
+					pBaseO->bActive= true;
+					sData.pHead= pBaseO;
+					sData.dwSize= pBaseO->sBaseIn.dwSize;
+					m_pcComm->SendData(&sData, llId);
+				}
+			} else
+				delete pcChan;
+		}
 	} else
 		sBase.nError= INVALID_COMMAND;
 
