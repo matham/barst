@@ -47,13 +47,7 @@ CManagerFTDI::CManagerFTDI(CComm* pcComm, const TCHAR szPipe[], int nChan, int &
 		nError= BAD_INPUT_PARAMS;
 		return;
 	}
-	BOOL bRes= GetProcAddresses(&m_hLib, 
-#ifdef _WIN64
-		_T("ftd2xx64.dll")
-#else
-		_T("ftd2xx.dll")
-#endif
-		, 14, &lpfFT_GetDeviceInfoList, "FT_GetDeviceInfoList", 
+	BOOL bRes= GetProcAddresses(&m_hLib, _T("ftd2xx.dll"), 14, &lpfFT_GetDeviceInfoList, "FT_GetDeviceInfoList", 
 		&lpfFT_CreateDeviceInfoList, "FT_CreateDeviceInfoList", 
 		&lpfFT_SetLatencyTimer, "FT_SetLatencyTimer", &lpfFT_OpenEx, "FT_OpenEx", &lpfFT_Close, "FT_Close", 
 		&lpfFT_Read, "FT_Read", &lpfFT_Write, "FT_Write", &lpfFT_SetBaudRate, "FT_SetBaudRate", &lpfFT_SetBitMode, "FT_SetBitMode",
