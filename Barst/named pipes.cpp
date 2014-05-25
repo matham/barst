@@ -401,7 +401,6 @@ DWORD CPipeServer::ThreadProc()
 
 void CPipeServer::Close()
 {
-	bool bNotEmpty;
 	// close thread handle
 	EnterCriticalSection(&m_sInitSafe);
 	m_bWorking= false;

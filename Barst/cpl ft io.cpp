@@ -679,7 +679,7 @@ bool CPinWPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 			ResetEvent(m_hNext);
 		}
 		LeaveCriticalSection(&m_hDataSafe);
-	} else if (m_eState == eActive && eReason == ePostWrite) // now let user know if succesful and set buffer to default.
+	} else if (m_eState == eActive && eReason == ePostRead) // now let user know if succesful and set buffer to default.
 	{
 		if (m_bChanged)
 		{
@@ -919,8 +919,8 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 		ResetEvent(m_hNext);
 		m_nProcessed= 0;
 		m_bRead= false;
-		for (DWORD i= 0; i<m_sInitFT.dwBuff;++i)				// now set these pins to default
-			aucBuff[i]= aucBuff[i]&m_ucMask;
+		//for (DWORD i= 0; i<m_sInitFT.dwBuff;++i)				// now set these pins to default
+		//	aucBuff[i]= aucBuff[i]&m_ucMask;
 	} else if (m_eState == eActive && eReason == ePreWrite)
 	{
 		EnterCriticalSection(&m_hDataSafe);
