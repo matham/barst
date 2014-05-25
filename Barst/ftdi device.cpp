@@ -481,7 +481,7 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 			sPeriphInit.dwMinSizeR= 0;
 			sPeriphInit.dwMinSizeW= (sValveInit.dwBoards*8*2+2)*sValveInit.dwClkPerData;
 			sPeriphInit.nChan= (int)m_aDevices.size();
-			sPeriphInit.ucBitMode= FT_BITMODE_ASYNC_BITBANG|FT_BITMODE_SYNC_BITBANG;
+			sPeriphInit.ucBitMode= FT_BITMODE_SYNC_BITBANG;
 			switch(sFTInfo.Type)
 			{
 			case FT_DEVICE_2232H:
@@ -533,7 +533,7 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 			sPeriphInit.dwMinSizeR= 0;
 			sPeriphInit.dwMinSizeW= sPinInit.usBytesUsed;
 			sPeriphInit.nChan= (int)m_aDevices.size();
-			sPeriphInit.ucBitMode= FT_BITMODE_ASYNC_BITBANG|FT_BITMODE_SYNC_BITBANG;
+			sPeriphInit.ucBitMode= FT_BITMODE_SYNC_BITBANG;
 			switch(sFTInfo.Type)
 			{
 			case FT_DEVICE_2232H:
@@ -653,6 +653,7 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 			nError= NO_SYS_RESOURCE;
 			return;
 		}
+		memset(m_aucTx, 0, dwWrite);
 	}
 	if (dwRead)
 	{
@@ -874,11 +875,11 @@ DWORD CChannelFTDI::ThreadProc()
 				EStateFTDI eType= m_aDevices[i]->GetState();
 				if (eType != eInactive)
 				{
-					ucMode &= m_aDevices[i]->m_sInitFT.ucBitMode;
 					dwBaud= min(m_aDevices[i]->m_sInitFT.dwMaxBaud, dwBaud);
 					dwWrite= max(m_aDevices[i]->m_sInitFT.dwMinSizeW, dwWrite);
 					dwRead= max(m_aDevices[i]->m_sInitFT.dwMinSizeR, dwRead);
 				}
+				ucMode &= m_aDevices[i]->m_sInitFT.ucBitMode;
 				ucOutput |= m_aDevices[i]->GetOutputBits();
 				bUpdating = bUpdating || eType == eActivateState || eType == eInactivateState;
 			}
