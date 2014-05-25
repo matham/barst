@@ -366,6 +366,7 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 				dwMaxWrite= max((psValveInit->dwBoards*8*2+2)*psValveInit->dwClkPerData, dwMaxWrite);
 				dwBuffSizeRead= max(dwBuffSizeRead, psValveInit->dwBoards*8*sizeof(bool));
 				pBase= (SBase*)((char*)pBase +sizeof(SValveInit));
+				bPadd = true;
 				if ((psValveInit->dwBoards*8*2+2)*psValveInit->dwClkPerData > dwMaxPacket)
 				{
 					nError= BUFF_TOO_SMALL;
@@ -403,6 +404,7 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 				dwMaxWrite= max(psPinInit->usBytesUsed, dwMaxWrite);
 				dwBuffSizeRead= max(dwBuffSizeRead, psPinInit->usBytesUsed*sizeof(SPinWData));
 				pBase= (SBase*)((char*)pBase +sizeof(SPinInit));
+				bPadd = true;
 				if (psPinInit->usBytesUsed > dwMaxPacket)
 				{
 					nError= BUFF_TOO_SMALL;
@@ -478,8 +480,8 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 		case eFTDIMultiWriteInit:
 			{
 			SValveInit sValveInit= *(SValveInit*)(++pBase);
-			sPeriphInit.dwMinSizeR= 0;
-			sPeriphInit.dwMinSizeW= (sValveInit.dwBoards*8*2+2)*sValveInit.dwClkPerData;
+			sPeriphInit.dwMinSizeW= dwPacket*(DWORD)ceil((sValveInit.dwBoards*8*2+2)*sValveInit.dwClkPerData/(double)dwPacket);
+			sPeriphInit.dwMinSizeR= sPeriphInit.dwMinSizeW;
 			sPeriphInit.nChan= (int)m_aDevices.size();
 			sPeriphInit.ucBitMode= FT_BITMODE_SYNC_BITBANG;
 			switch(sFTInfo.Type)
@@ -530,8 +532,8 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 		case eFTDIPinWriteInit:
 			{
 			SPinInit sPinInit= *(SPinInit*)(++pBase);
-			sPeriphInit.dwMinSizeR= 0;
-			sPeriphInit.dwMinSizeW= sPinInit.usBytesUsed;
+			sPeriphInit.dwMinSizeW= dwPacket*(DWORD)ceil(sPinInit.usBytesUsed/(double)dwPacket);
+			sPeriphInit.dwMinSizeR= sPeriphInit.dwMinSizeW;
 			sPeriphInit.nChan= (int)m_aDevices.size();
 			sPeriphInit.ucBitMode= FT_BITMODE_SYNC_BITBANG;
 			switch(sFTInfo.Type)
@@ -854,9 +856,12 @@ DWORD CChannelFTDI::ThreadProc()
 			while (m_asUpdates.GetSize())	// apply user updates, i.e. activate or inactivate
 			{
 				SFTUpdates sUp= m_asUpdates.Front(true, bNotEmpty);
-				m_aDevices[((SBaseIn*)sUp.sData.pHead)->nChan]->DoWork(NULL, 0, m_ftHandle, 
-					((SBaseIn*)sUp.sData.pHead)->eType == eActivate? eActivateState: eInactivateState, 0);
-				m_pcComm->SendData(&sUp.sData, sUp.llId);	// XXX this should be responded to by individual devices not here (in case not done yet)
+				if (bNotEmpty)
+				{
+					m_aDevices[((SBaseIn*)sUp.sData.pHead)->nChan]->DoWork(NULL, 0, m_ftHandle, 
+						((SBaseIn*)sUp.sData.pHead)->eType == eActivate? eActivateState: eInactivateState, 0);
+					m_pcComm->SendData(&sUp.sData, sUp.llId);	// XXX this should be responded to by individual devices not here (in case not done yet)
+				}
 			}
 			ResetEvent(m_hUpdate);
 			ResetEvent(m_hNext);
