@@ -699,6 +699,7 @@ bool CPinWPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 					m_pcComm->SendData(&sData, m_allIds.Front(true, bNotEmpty));
 				}
 			}
+			aucBuff = ((SFTBufferSafe*)pHead)->aucBuff;
 			m_nProcessed= 0;
 			for (unsigned short i= 0; i<m_sInit.usBytesUsed;++i)
 				aucBuff[i]= (aucBuff[i]&m_ucMask)|m_ucLast;
