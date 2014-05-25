@@ -156,7 +156,7 @@ protected:
 
 /** defines the ADC device that can be attched to the FTDI bus. */
 #define ADC_P	_T("ADCBrd")
-#define ADC_RESET_DELAY 5000
+#define ADC_RESET_DELAY 2500
 enum EHandshakeADC {
 	eConfigStart,
 	eConfigTO,
