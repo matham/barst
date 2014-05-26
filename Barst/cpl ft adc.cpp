@@ -373,6 +373,7 @@ bool CADCPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFTD
 				}
 			case eConfigDone:
 				{
+				m_dwPos = 0;
 				m_ucBitOutput = m_sInitFT.ucBitOutput;
 				m_cDataOffset = m_ucNBytes * (m_cBuffSize / m_ucNBytes - 1);
 				m_dwDataCount = 0;

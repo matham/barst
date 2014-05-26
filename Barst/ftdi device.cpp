@@ -598,6 +598,8 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 				sPeriphInit.dwMaxBaud= FTDI_BAUD_DEFAULT;	// 1MHz/16
 				break;
 			}
+			if (sADCInit.ucDataBits != 0 && sADCInit.ucDataBits != 2 && sADCInit.ucDataBits != 6)
+				sPeriphInit.dwMaxBaud /= 2;
 			sPeriphInit.ucBitOutput = 1<<sADCInit.ucClk;
 			hEvent= CreateEvent(NULL,TRUE, FALSE, NULL);
 			m_ahEvents.push_back(hEvent);
