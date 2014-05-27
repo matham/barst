@@ -12,6 +12,10 @@
 #define NOTE(x)  message (__FILE__ "(" PRAGMA_STR2(__LINE__) ") : -NOTE- " #x)
 
 
+
+const char *ToBinary(unsigned char ucVal, char csBuff[9]);
+
+
 /**
 	Loads a dll as well as a list of functions in the dll.
 //GetProcAddresses

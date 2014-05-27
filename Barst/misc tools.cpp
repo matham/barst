@@ -7,6 +7,15 @@
 CTimer g_cTimer;
 
 
+const char *ToBinary(unsigned char ucVal, char csBuff[9])
+{
+	for (int j = 7; j >= 0; --j)
+		csBuff[7 - j] = ((0x01 << j) & ucVal) ? '1' : '0';
+	csBuff[8] = '\0';
+	return csBuff;
+}
+
+
 BOOL GetProcAddresses(HINSTANCE *hLibrary, LPCTSTR lpszLibrary, INT nCount, ... )
 {
     va_list va;
