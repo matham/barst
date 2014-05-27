@@ -31,13 +31,6 @@ private:
 };
 
 
-// struct used by FTDI thread to send read buffers and its protectors.
-typedef struct SFTBufferSafe
-{
-	CRITICAL_SECTION	sSafe;
-	unsigned char*		aucBuff;
-} SFTBufferSafe;
-
 // struct used by ftdi thread to repond to user updates commands
 typedef struct SFTUpdates
 {
@@ -87,12 +80,11 @@ private:
 	HANDLE					m_hUpdate;	// tells the thread updates are pending for a device
 	std::vector<HANDLE>		m_ahEvents;	// events for all the devices
 	HANDLE					m_hThread;	// thread handle
-	CQueue<SFTUpdates>			m_asUpdates;	// queue which holds the updates, MUST only be valid
+	CQueue<SFTUpdates>		m_asUpdates;	// queue which holds the updates, MUST only be valid
 
 
 	unsigned char*			m_aucTx;	// buffer used to write to device
-	SFTBufferSafe			m_sRx1;		// buffer used to read
-	SFTBufferSafe			m_sRx2;		// second buffer used to read
+	CMemRing*				m_pcMemRing; // provides the buffers for reading
 
 	CTimer					m_cTimer;	// timer for this channel
 };
@@ -117,6 +109,7 @@ enum EStateFTDI
 	of devices. Every device is initialized with a const struct of the init info. */
 class CPeriphFTDI : public CDevice
 {
+friend class CChannelFTDI;
 public:
 	/** szName is the unique device name. sInitFT is the init for this device. */
 	CPeriphFTDI(const TCHAR szName[], const SInitPeriphFT &sInitFT) : CDevice(szName), m_sInitFT(sInitFT),
@@ -127,11 +120,13 @@ public:
 		before every write to give each device the oppertunity to update the buffer to be written. 
 		Then after the write it's called again so that the buffer can be set again to the proper values.
 		In both cases pHead is the write buffer. 
-		The function is also called after a read with pHead pointing to one of the SFTBufferSafe structs
-		which holds the most recent buffer read. The device can now extract the data read. 
+		The function is also called after a read with pHead pointing to the index of memory gotten from m_pcMemRing
+		which holds the most recent buffer read. The device should claim the memory while it's used and not forget
+		to release it after. This allows prolonged usgae of the read buffer without holding up the 
+		read thread. The device can now extract the data read. 
 		Finally, the function is also called when we need to change the state of a device. In that case it's
 		only called on the device in question.
-		In all cases, dwSize is the size of the buffer (in case of read it's the buffer in the SFTBufferSafe
+		In all cases, dwSize is the size of the buffer (in case of read it's the buffer from m_pcMemRing
 		struct). 
 		ftHandle if the handle to the ft device, you probably shouldn't do anything with it.
 		eReason is the reson for this call, such as prewrite etc. Defined in EStateFTDI.
@@ -151,6 +146,7 @@ protected:
 	EStateFTDI		m_eState;	// current device state
 	CTimer*			m_pcTimer;	// timer of device.
 	unsigned char	m_ucBitOutput;	// current bits set as output
+	CMemRing*		m_pcMemRing;	// the class that provides the reading buffers
 };
 
 
@@ -164,6 +160,14 @@ enum EHandshakeADC {
 	eConfigWrite,
 	eConfigDone,
 };
+
+typedef struct STimedRead
+{
+	double	dTime;
+	int		nIdx;
+	void*	pHead;
+} STimedRead;
+
 class CADCPeriph : public CPeriphFTDI
 {
 public:
@@ -189,7 +193,7 @@ public:
 	const unsigned char		m_ucNGroups;	// number of transections it takes to get a data set (cycle)
 	const unsigned char		m_ucNBytes;		// number of bytes sent in a data set
 private:
-	void ExtractData();
+	void ExtractData(STimedRead *psRead);
 	DWORD					m_dwRestartE;
 	EHandshakeADC			m_eConfigState;
 	SData					m_sData;
@@ -200,8 +204,7 @@ private:
 	HANDLE					m_hReset;
 	HANDLE					m_hNext;
 
-	SFTBufferSafe*			m_psRx;
-	CRITICAL_SECTION		m_hDataSafe;
+	CQueue<STimedRead *>	m_apsReadIdx;
 	CRITICAL_SECTION		m_hStateSafe;
 	__int64					m_llId;
 
@@ -225,7 +228,6 @@ private:
 	float					m_fTimeWorked;
 	DWORD					m_dwStartRead;
 	double					m_dTimeTemp;
-	double					m_dTimeS;
 
 	//unsigned char			m_ucLastByte;
 };

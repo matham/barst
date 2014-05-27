@@ -16,6 +16,7 @@ CMultiWPeriph::CMultiWPeriph(const SValveInit &sValveInit, CComm *pcComm, const 
 	nError= 0;
 	m_bError= true;
 	m_pcMemPool= new CMemPool;
+	m_pcMemRing = NULL;
 	InitializeCriticalSection(&m_hDataSafe);
 	// minw has to be at least as large as required for writing full boards, dwbuff also has to be as large, but can be larger
 	// e.g. if adc device is also active this dwBuff will be larger than dwMinSizeW
@@ -258,6 +259,7 @@ CMultiRPeriph::CMultiRPeriph(const SValveInit &sValveInit, CComm *pcComm, const 
 {
 	nError= 0;
 	m_bError= true;
+	m_pcMemRing = NULL;
 	InitializeCriticalSection(&m_hDataSafe);
 	m_pcMemPool= new CMemPool;
 	// minw has to be at least as large as required for writing full boards, dwbuff also has to be as large
@@ -416,6 +418,7 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 	{
 		if (m_bRead)
 		{
+			aucBuff = (unsigned char *)m_pcMemRing->GetIndexMemoryUnsafe(*(int *)pHead);
 			for (int j= 0; j<m_nProcessed; ++j)	// notify users
 			{
 				SData sData;
@@ -433,7 +436,7 @@ bool CMultiRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EState
 					((SBase*)((char*)sData.pHead+sizeof(SBaseOut)))->dwSize= sizeof(SBase)+sizeof(bool)*m_sInit.dwBoards*8;
 					bool* bVal= (bool*)((char*)sData.pHead+sizeof(SBaseOut)+sizeof(SBase));
 					for (DWORD i= 0; i<m_sInit.dwBoards*8; ++i)
-						bVal[i]= (((SFTBufferSafe*)pHead)->aucBuff[(3+i*2)*m_sInit.dwClkPerData]&1<<m_sInit.ucData) != 0;
+						bVal[i]= (aucBuff[(3+i*2)*m_sInit.dwClkPerData]&1<<m_sInit.ucData) != 0;
 					EnterCriticalSection(&m_hDataSafe);
 					if (m_pcComm->SendData(&sData, m_allIds[j]))
 						m_allIds[j] = -1;
@@ -553,6 +556,7 @@ CPinWPeriph::CPinWPeriph(const SPinInit &sPinInit, CComm *pcComm, const SInitPer
 {
 	nError= 0;
 	m_bError= true;
+	m_pcMemRing = NULL;
 	InitializeCriticalSection(&m_hDataSafe);
 	m_pcMemPool= new CMemPool;
 	// minw has to be at least as large as required for writing full boards, dwbuff also has to be as large
@@ -679,6 +683,11 @@ bool CPinWPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 			ResetEvent(m_hNext);
 		}
 		LeaveCriticalSection(&m_hDataSafe);
+	} else if (m_eState == eActive && eReason == ePostWrite)
+	{
+		if (m_bChanged)
+			for (unsigned short i= 0; i<m_sInit.usBytesUsed;++i)
+				aucBuff[i]= (aucBuff[i]&m_ucMask)|m_ucLast;
 	} else if (m_eState == eActive && eReason == ePostRead) // now let user know if succesful and set buffer to default.
 	{
 		if (m_bChanged)
@@ -699,10 +708,7 @@ bool CPinWPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 					m_pcComm->SendData(&sData, m_allIds.Front(true, bNotEmpty));
 				}
 			}
-			aucBuff = ((SFTBufferSafe*)pHead)->aucBuff;
 			m_nProcessed= 0;
-			for (unsigned short i= 0; i<m_sInit.usBytesUsed;++i)
-				aucBuff[i]= (aucBuff[i]&m_ucMask)|m_ucLast;
 			m_bChanged= false;
 		}
 	}
@@ -829,6 +835,7 @@ CPinRPeriph::CPinRPeriph(const SPinInit &sPinInit, CComm *pcComm, const SInitPer
 {
 	nError= 0;
 	m_bError= true;
+	m_pcMemRing = NULL;
 	InitializeCriticalSection(&m_hDataSafe);
 	m_pcMemPool= new CMemPool;
 	// minw has to be at least as large as required for writing full boards, dwbuff also has to be as large
@@ -970,6 +977,7 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 	{
 		if (m_bRead)
 		{
+			aucBuff = (unsigned char *)m_pcMemRing->GetIndexMemoryUnsafe(*(int *)pHead);
 			for (int j= 0; j<m_nProcessed; ++j)	// notify users
 			{
 				SData sData;
@@ -987,7 +995,7 @@ bool CPinRPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFT
 					((SBase*)((unsigned char*)sData.pHead+sizeof(SBaseOut)))->dwSize= sizeof(SBase)+sizeof(unsigned char)*m_sInit.usBytesUsed;
 					unsigned char* ucVal= (unsigned char*)sData.pHead+sizeof(SBaseOut)+sizeof(SBase);
 					for (unsigned short i= 0; i<m_sInit.usBytesUsed; ++i)
-						ucVal[i]= ((SFTBufferSafe*)pHead)->aucBuff[i]&~m_ucMask;
+						ucVal[i]= aucBuff[i]&~m_ucMask;
 					EnterCriticalSection(&m_hDataSafe);
 					if (m_pcComm->SendData(&sData, m_allIds[j]))
 						m_allIds[j] = -1;

@@ -1,11 +1,6 @@
 
 #include "cpl defs.h"
 #include "ftdi device.h"
-#if _DEBUG
-#include <iostream>
-#include <fstream>
-std::ofstream s_log_file;
-#endif
 
 static const unsigned char s_aucBitReverseTable256[] = 
 {
@@ -48,18 +43,18 @@ CADCPeriph::CADCPeriph(const SADCInit &sADCInit, CComm *pcComm, const SInitPerip
 	| (sADCInit.ucBitsPerData == 24?0x10:0) | (sADCInit.bChan2?0x8:0) | (sADCInit.bChan1?0x4:0) | (sADCInit.ucInputRange & 0x3)),
 	m_ucTransPerByte(0), m_hNext(hNewData),
 	m_ucNGroups(((sADCInit.ucDataBits==0) | (sADCInit.ucDataBits==2) | (sADCInit.ucDataBits==6))?(m_sInit.ucBitsPerData/8+1)*8/(sADCInit.ucDataBits+2):8),
-	m_ucNBytes(((sADCInit.ucDataBits==0) | (sADCInit.ucDataBits==2) | (sADCInit.ucDataBits==6))?(m_sInit.ucBitsPerData/8 + 1):(sADCInit.ucDataBits + 2))
+	m_ucNBytes(((sADCInit.ucDataBits==0) | (sADCInit.ucDataBits==2) | (sADCInit.ucDataBits==6))?(m_sInit.ucBitsPerData/8 + 1):(sADCInit.ucDataBits + 2)),
+	m_hProcessData(CreateEvent(NULL, TRUE, FALSE, NULL)), m_apsReadIdx(m_hProcessData)
 {
 	nError= 0;
 	m_bError= true;
 	m_hThreadClose= NULL;
-	m_hProcessData= NULL;
 	m_hReset= NULL;
 	m_hThread= NULL;
+	m_pcMemRing = NULL;
 	m_psDataHeader= NULL;
 	m_pcMemPool= new CMemPool;
 	m_pcTimer= NULL;
-	InitializeCriticalSection(&m_hDataSafe);
 	InitializeCriticalSection(&m_hStateSafe);
 	// assumption is that the ADC buffer length is the one that makes dwBuff largest, i.e. ADC buffer is always
 	// equal to dwBuff
@@ -75,7 +70,6 @@ CADCPeriph::CADCPeriph(const SADCInit &sADCInit, CComm *pcComm, const SInitPerip
 	m_pcComm= pcComm;
 	m_pcTimer= pcTimer;
 	m_hThreadClose= CreateEvent(NULL, TRUE, FALSE, NULL);
-	m_hProcessData= CreateEvent(NULL, TRUE, FALSE, NULL);
 	m_hReset= CreateEvent(NULL, TRUE, TRUE, NULL);
 	if (!m_hThreadClose || !m_hProcessData || !m_hReset)
 	{
@@ -165,7 +159,6 @@ CADCPeriph::CADCPeriph(const SADCInit &sADCInit, CComm *pcComm, const SInitPerip
 	m_aucBuff = (unsigned char*)m_pcMemPool->PoolAcquire(m_cBuffSize);
 	memset(m_aucBuff, 0, m_cBuffSize);
 	m_cDataOffset = m_ucNBytes * (m_cBuffSize / m_ucNBytes - 1);
-	//s_log_file.open("Birch log file.txt");
 };
 
 DWORD CADCPeriph::GetInfo(void* pHead, DWORD dwSize)
@@ -202,16 +195,25 @@ CADCPeriph::~CADCPeriph()
 	// wait max 2sec
 	if (m_hThread && (WAIT_OBJECT_0 != SignalObjectAndWait(m_hThreadClose, m_hThread, 2000, FALSE)))
 		TerminateThread(m_hThread, 0);
-	DeleteCriticalSection(&m_hDataSafe);
 	DeleteCriticalSection(&m_hStateSafe);
 	if (m_hThread) CloseHandle(m_hThread);
+	STimedRead *psRead = NULL;
+	bool bNotEmpty;
+	while (m_pcMemRing && m_apsReadIdx.GetSize())
+	{
+		psRead = m_apsReadIdx.Front(true, bNotEmpty);
+		if (psRead && bNotEmpty)
+		{
+			m_pcMemRing->ReleaseIndex(psRead->nIdx);
+			delete psRead;
+		}
+	}
 	if (m_hProcessData) CloseHandle(m_hProcessData);
 	if (m_hReset) CloseHandle(m_hReset);
 	if (m_hThreadClose) CloseHandle(m_hThreadClose);
 	if (m_psDataHeader)
 		m_pcMemPool->PoolRelease(m_psDataHeader);
 	delete m_pcMemPool;
-	//s_log_file.close();
 }
 
 bool CADCPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFTDI eReason, int nError)
@@ -361,7 +363,7 @@ bool CADCPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFTD
 			case eConfigWrite:
 				{
 				unsigned short usConfigWord = 0;
-				unsigned char * aucRx = ((SFTBufferSafe*)pHead)->aucBuff;
+				unsigned char * aucRx = (unsigned char *)m_pcMemRing->GetIndexMemoryUnsafe(*(int *)pHead);
 				for (char i = 0; i < 16; ++i)
 					if (aucRx[3*i + 116] & m_ucConfigReadBit)
 						usConfigWord |= 1 << (15 - i);
@@ -388,43 +390,11 @@ bool CADCPeriph::DoWork(void *pHead, DWORD dwSize, FT_HANDLE ftHandle, EStateFTD
 			}
 		} else if (m_eState == eActive)	// select which read buffer to use
 		{
-			/*aucBuff = ((SFTBufferSafe*)pHead)->aucBuff;
-			bool bLastDiff = false;
-			char c;
-			DWORD last_i = 0;
-			for (DWORD i = 1; i < m_sInitFT.dwBuff-1; ++i)
-			{
-				if ((aucBuff[i] & (1<<5)) != (aucBuff[i-1] & (1<<5)))
-				{
-					if (bLastDiff)
-					{
-						s_log_file << "\n";
-						bLastDiff = false;
-					}
-				} else
-					if ((aucBuff[i] & (1<<7)) && !(aucBuff[i-1] & (1<<7)))
-					{
-						if (!bLastDiff)
-							s_log_file << "\n";
-						bLastDiff = true;
-					}
-				c = aucBuff[i];
-				s_log_file <<((c&(1<<7))?"1":"0")<<" "<<((c&(1<<6))?"1":"0")<<((c&(1<<5))?"1":"0")<<((c&(1<<4))?"1":"0")<<((c&(1<<3))?"1":"0")\
-					<<" "<<((c&(1<<2))?"1":"0")<<((c&(1<<1))?"1":"0")<<((c&(1<<0))?"1":"0")<<\
-					(((aucBuff[i+1] & (1<<7)) && !(aucBuff[i] & (1<<7)) && (aucBuff[i+1] & (1<<6)) == (aucBuff[i] & (1<<6)) && (aucBuff[i+1] & (1<<5)) != (aucBuff[i] & (1<<5)))?"---------------------":"")<<"\n";
-				if (((aucBuff[i+1] & (1<<7)) && !(aucBuff[i] & (1<<7)) && (aucBuff[i+1] & (1<<6)) == (aucBuff[i] & (1<<6)) && (aucBuff[i+1] & (1<<5)) != (aucBuff[i] & (1<<5))))
-				{
-					s_log_file<<"\n"<<i-last_i<<"\n";
-					last_i = i;
-				}
-			}
-			s_log_file << "\n\n\n\n\n\n\n\n\n\n";
-			s_log_file.flush();*/
-			EnterCriticalSection(&m_hDataSafe);
-			m_psRx= (SFTBufferSafe*)pHead;
-			m_dTimeS= m_dTimeTemp;
-			SetEvent(m_hProcessData);
-			LeaveCriticalSection(&m_hDataSafe);
+			STimedRead sTimed;
+			sTimed.nIdx = *(int *)pHead;
+			sTimed.dTime = m_dTimeTemp;
+			sTimed.pHead = m_pcMemRing->GetIndexMemory(sTimed.nIdx);
+			m_apsReadIdx.Push(new STimedRead(sTimed));
 		}
 		break;
 	default:
@@ -498,9 +468,10 @@ void CADCPeriph::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 DWORD CADCPeriph::ThreadProc()
 {
 	HANDLE ahEvents[]= {m_hThreadClose, m_hProcessData, m_hReset};
-	bool bDone= false;
+	bool bDone= false, bNotEmpty;
 	DWORD dwStart, dwMid, dwEnd;
 	DWORD dwInitialRead= 0;
+	STimedRead *psRead = NULL;
 
 	while (!bDone)
 	{
@@ -511,16 +482,23 @@ DWORD CADCPeriph::ThreadProc()
 			bDone= true;
 			break;
 		case WAIT_OBJECT_0 + 1:
-			dwInitialRead= m_psDataHeader->dwCount1+m_psDataHeader->dwCount2;
-			m_dwAmountRead= 0;
-			dwMid= GetTickCount();
-			ExtractData();
-			dwEnd= GetTickCount();
-			m_dwAmountRead += m_psDataHeader->dwCount1+m_psDataHeader->dwCount2;
-			m_fTimeWorked= (float)((double)(dwEnd-dwMid)/(dwEnd-dwStart));
-			//m_fSpaceFull= (float)((double)(m_dwAmountRead-dwInitialRead)/(m_sInitFT.dwBuff/
-			//	(2*((m_sInit.ucBitsPerData/8+(m_sInit.bStatusReg?1:0))*m_ucTransPerByte+1))));
-			//m_fDataRate= (float)((double)(m_dwAmountRead-dwInitialRead)/(dwEnd-dwStart)*1000/((m_sInit.bChan1 && m_sInit.bChan2)?2:1));
+			psRead = m_apsReadIdx.Front(true, bNotEmpty);
+			if (psRead && bNotEmpty)
+			{
+				dwInitialRead= m_psDataHeader->dwCount1+m_psDataHeader->dwCount2;
+				m_dwAmountRead= 0;
+				dwMid= GetTickCount();
+				ExtractData(psRead);
+				dwEnd= GetTickCount();
+				m_dwAmountRead += m_psDataHeader->dwCount1+m_psDataHeader->dwCount2;
+				m_fTimeWorked= (float)((double)(dwEnd-dwMid)/(dwEnd-dwStart));
+				//m_fSpaceFull= (float)((double)(m_dwAmountRead-dwInitialRead)/(m_sInitFT.dwBuff/
+				//	(2*((m_sInit.ucBitsPerData/8+(m_sInit.bStatusReg?1:0))*m_ucTransPerByte+1))));
+				//m_fDataRate= (float)((double)(m_dwAmountRead-dwInitialRead)/(dwEnd-dwStart)*1000/((m_sInit.bChan1 && m_sInit.bChan2)?2:1));
+				m_pcMemRing->ReleaseIndex(psRead->nIdx);
+				delete psRead;
+			}
+			m_apsReadIdx.ResetIfEmpty();
 			break;
 		case WAIT_OBJECT_0 + 2:
 			m_psDataHeader->dwCount1= 0;
@@ -545,18 +523,12 @@ DWORD CADCPeriph::ThreadProc()
 }
 
 // this needs to take faster than a single read/write, otherwise we'd lose data
-void CADCPeriph::ExtractData()
+void CADCPeriph::ExtractData(STimedRead *psRead)
 {
 	if (m_bError)
 		return;
-	EnterCriticalSection(&m_hDataSafe);
-	unsigned char* rx = m_psRx->aucBuff;	// buffer was allocated with 2 bytes extra before this pointer
-	// this will make sure the FTDI thread doesn't start using this buffer
-	// it doesn't make sure that we don't miss data if the FTDI thread has flown through these buffers before we start reading
-	CRITICAL_SECTION* psSafe = &m_psRx->sSafe;
-	m_psDataHeader->dStartTime = m_dTimeS;
-	ResetEvent(m_hProcessData);	// got the data
-	LeaveCriticalSection(&m_hDataSafe);
+	unsigned char* rx = (unsigned char *)psRead->pHead;
+	m_psDataHeader->dStartTime = psRead->dTime;
 	EnterCriticalSection(&m_hStateSafe);
 	__int64	llId = m_llId;	// get most recent ID
 	LeaveCriticalSection(&m_hStateSafe);
@@ -565,7 +537,6 @@ void CADCPeriph::ExtractData()
 	m_psDataHeader->dwChan2S = m_psDataHeader->dwCount2;
 	unsigned char ucTemp1, ucTemp2;
 
-	EnterCriticalSection(psSafe);
 	// start at one since 1 has new clocked in data (read before write and last to writes are same)
 	for (DWORD i= 0; i<=m_sInitFT.dwBuff-1;++i)
 	{
@@ -636,7 +607,6 @@ void CADCPeriph::ExtractData()
 					if (!m_psDataHeader)
 					{
 						m_bError = true;
-						LeaveCriticalSection(psSafe);
 						return;
 					}
 					m_psDataHeader->dwChan2Start = m_sInit.bChan1?m_sInit.dwDataPerTrans:0;
@@ -692,5 +662,4 @@ void CADCPeriph::ExtractData()
 			}
 		}
 	}
-	LeaveCriticalSection(psSafe);
 }

@@ -307,14 +307,11 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 	m_hNext= NULL;
 	m_hThread= NULL;
 	m_aucTx= NULL;
-	m_sRx1.aucBuff= NULL;
-	m_sRx2.aucBuff= NULL;
 	m_pcComm= NULL;
 	m_pcMemPool= new CMemPool;
+	m_pcMemRing = NULL;
 
 	nError= 0;
-	InitializeCriticalSection(&m_sRx1.sSafe);
-	InitializeCriticalSection(&m_sRx2.sSafe);
 
 	if (!pInit || !szPipe)
 	{
@@ -661,15 +658,15 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 	}
 	if (dwRead)
 	{
-		m_sRx1.aucBuff= (unsigned char*)m_pcMemPool->PoolAcquire(dwRead+2);
-		m_sRx2.aucBuff= (unsigned char*)m_pcMemPool->PoolAcquire(dwRead+2);
-		if (!m_sRx1.aucBuff || !m_sRx2.aucBuff)
+		m_pcMemRing = new CMemRing(dwRead+2, 1, 100);
+		int nIdx;
+		if (!m_pcMemRing->GetFree(&nIdx))		// make sure at least one buffer is available
 		{
 			nError= NO_SYS_RESOURCE;
 			return;
 		}
-		m_sRx1.aucBuff+= 2;
-		m_sRx2.aucBuff+= 2;
+		for (int i = 0; i < m_aDevices.size(); ++i)
+			m_aDevices[i]->m_pcMemRing = m_pcMemRing;
 	}
 
 	DWORD dwBaud = FTDI_BAUD_2232H;
@@ -745,11 +742,8 @@ CChannelFTDI::~CChannelFTDI()
 	if (m_hThread) CloseHandle(m_hThread);
 	lpfFT_Close(m_ftHandle);
 	if (m_pcMemPool && m_aucTx) m_pcMemPool->PoolRelease(m_aucTx);
-	if (m_pcMemPool && m_sRx1.aucBuff) m_pcMemPool->PoolRelease(m_sRx1.aucBuff-2);
-	if (m_pcMemPool && m_sRx2.aucBuff) m_pcMemPool->PoolRelease(m_sRx2.aucBuff-2);
-	DeleteCriticalSection(&m_sRx1.sSafe);
-	DeleteCriticalSection(&m_sRx2.sSafe);
 	delete m_pcMemPool;
+	delete m_pcMemRing;
 }
 
 void CChannelFTDI::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
@@ -821,12 +815,13 @@ void CChannelFTDI::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 
 DWORD CChannelFTDI::ThreadProc()
 {
-	bool bFirstRBuff= true, bUpdating= false, bNotEmpty;
+	bool bUpdating= false, bNotEmpty;
 	DWORD dwWrite, dwRead= 0, dwBytes, dwBaud, dwROld= 0, dwRes;
-	int nError= 0;
+	int nError= 0, nIdx;
 	bool bDone= false;
 	unsigned char ucMode= 0, ucOutput= 0, ucModeOld= 0, ucOutputOld;
 	const DWORD dwPacket= m_FTInfo.Flags&FT_FLAGS_HISPEED ? 510 : 62;
+	void *pHead;
 	SetEvent(m_hUpdate);
 
 	while (!bDone)
@@ -925,12 +920,10 @@ DWORD CChannelFTDI::ThreadProc()
 				}
 				if (dwRead && !nError)
 				{
-					EnterCriticalSection(bFirstRBuff?&m_sRx1.sSafe:&m_sRx2.sSafe);
-					nError= FT_ERROR(lpfFT_Read(m_ftHandle, bFirstRBuff?m_sRx1.aucBuff:m_sRx2.aucBuff, dwRead, &dwBytes), nError);
+					while (!(pHead = m_pcMemRing->GetFree(&nIdx)));
+					nError= FT_ERROR(lpfFT_Read(m_ftHandle, pHead, dwRead, &dwBytes), nError);
 					for (DWORD i= 0; i<m_aDevices.size() && !nError; ++i)
-						m_aDevices[i]->DoWork(bFirstRBuff?&m_sRx1:&m_sRx2, dwBytes, m_ftHandle, ePostRead, nError);
-					LeaveCriticalSection(bFirstRBuff?&m_sRx1.sSafe:&m_sRx2.sSafe);
-					bFirstRBuff= !bFirstRBuff;
+						m_aDevices[i]->DoWork((void *)&nIdx, dwBytes, m_ftHandle, ePostRead, nError);
 				}
 				if (nError)
 				{
