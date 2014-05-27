@@ -89,7 +89,7 @@ DWORD CManagerMCDAQ::GetInfo(void* pHead, DWORD dwSize)
 
 CManagerMCDAQ::~CManagerMCDAQ()
 {
-	for (size_t i= 0; i<m_usChans; ++i)
+	for (size_t i= 0; i < m_acDAQDevices.size(); ++i)
 		delete m_acDAQDevices[i];
 	if (m_hLib != NULL)
         FreeLibrary(m_hLib);
@@ -304,8 +304,10 @@ CChannelMCDAQ::~CChannelMCDAQ()
 	{
 		psPackt= m_asWPackets.Front(true, bValid);
 		if (psPackt && bValid)
+		{
 			delete psPackt->psData;
 			delete psPackt;
+		}
 	}
 
 	if (m_hStopEvent) CloseHandle(m_hStopEvent);
@@ -361,7 +363,7 @@ void CChannelMCDAQ::ProcessData(const void *pHead, DWORD dwSize, __int64 llId)
 		psPacket->psData = new SMCDAQWData;
 		*psPacket->psData = *((SMCDAQWData *)((char *)pBase + sizeof(SBaseIn) + sizeof(SBase)));
 		m_asWPackets.Push(psPacket);
-	} else if (pBase->eType != eTrigger)	// add this read request
+	} else if (pBase->eType == eTrigger)	// add this read request
 	{
 		EnterCriticalSection(&m_hReadSafe);
 		int k = 0;
@@ -441,7 +443,7 @@ DWORD CChannelMCDAQ::ThreadProc()
 		case WAIT_OBJECT_0+1:										// user requested write
 		{
 			ResetEvent(m_hWriteEvent);	// event won't be set again as long as queue is not empty
-			psPacket= m_asWPackets.Front(false, bValid);
+			psPacket= m_asWPackets.Front(true, bValid);
 			if (m_asWPackets.GetSize())
 				SetEvent(m_hWriteEvent);
 			if (!psPacket || !bValid)	// valid queue element
