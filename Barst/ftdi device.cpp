@@ -595,8 +595,6 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 				sPeriphInit.dwMaxBaud= FTDI_BAUD_DEFAULT;	// 1MHz/16
 				break;
 			}
-			if (sADCInit.ucDataBits != 0 && sADCInit.ucDataBits != 2 && sADCInit.ucDataBits != 6)
-				sPeriphInit.dwMaxBaud /= 2;
 			sPeriphInit.ucBitOutput = 1<<sADCInit.ucClk;
 			hEvent= CreateEvent(NULL,TRUE, FALSE, NULL);
 			m_ahEvents.push_back(hEvent);
@@ -675,6 +673,8 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 		dwBaud= min(m_aDevices[i]->m_sInitFT.dwMaxBaud, dwBaud);
 	}
 	m_sChanInit.dwBaud = dwBaud;
+	if (sChanInit.dwBaud)
+		m_sChanInit.dwBaud = min(m_sChanInit.dwBaud, sChanInit.dwBaud);
 	m_sChanInit.dwBuffIn = dwBuffSizeRead + MIN_BUFF_IN;
 	m_sChanInit.dwBuffOut = dwBuffSizeWrite + MIN_BUFF_OUT;
 

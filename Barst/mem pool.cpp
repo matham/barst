@@ -73,7 +73,7 @@ void *CMemRing::GetFree(int *pnIdx)
 	{
 		sRingItem.nCount = 0;
 		pHead = sRingItem.pMemory = malloc(m_llSize);
-		*pnIdx = m_apMemory.size();
+		*pnIdx = (int)m_apMemory.size();
 		m_apMemory.push_back(sRingItem);
 	}
 	LeaveCriticalSection(&m_hMemSafe);
