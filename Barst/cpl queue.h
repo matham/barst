@@ -55,6 +55,13 @@ public:
 		LeaveCriticalSection(&m_rLock);
 		return nSize;
 	}
+	/**	Resets queue event safely only if the queue is empty. */
+	void ResetIfEmpty(){
+		EnterCriticalSection(&m_rLock);
+		if (!m_cPacketQueue.size())
+			ResetEvent(m_hEvent);
+		LeaveCriticalSection(&m_rLock);
+	}
 private:
 	std::queue<T>		m_cPacketQueue;	// Queue holding the objects
 	CRITICAL_SECTION	m_rLock;		// Protects reading/writing to queue
