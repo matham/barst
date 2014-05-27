@@ -2,6 +2,85 @@
 
 
 
+
+CMemRing::CMemRing(__int64 ll_size, int nMinElems, int nMaxElems) : m_llSize(ll_size),
+	m_nMinElems(nMinElems), m_nMaxElems(nMaxElems)
+{
+	SRingItem sRingItem;
+	InitializeCriticalSection(&m_hMemSafe);
+	for (int i = 0; i < m_nMinElems; ++i)
+	{
+		sRingItem.nCount = 0;
+		sRingItem.pMemory = malloc(m_llSize);
+		m_apMemory.push_back(sRingItem);
+	}
+}
+
+CMemRing::~CMemRing()
+{
+	DeleteCriticalSection(&m_hMemSafe);
+	for (int i = 0; i < m_apMemory.size(); ++i)
+		free(m_apMemory[i].pMemory);
+}
+
+void *CMemRing::GetIndexMemory(int nIdx)
+{
+	void * pHead = NULL;
+	EnterCriticalSection(&m_hMemSafe);
+	if (nIdx < m_apMemory.size())
+	{
+		pHead = m_apMemory[nIdx].pMemory;
+		m_apMemory[nIdx].nCount += 1;
+	}
+	LeaveCriticalSection(&m_hMemSafe);
+	return pHead;
+}
+
+void *CMemRing::GetIndexMemoryUnsafe(int nIdx)
+{
+	void * pHead = NULL;
+	EnterCriticalSection(&m_hMemSafe);
+	if (nIdx < m_apMemory.size())
+		pHead = m_apMemory[nIdx].pMemory;
+	LeaveCriticalSection(&m_hMemSafe);
+	return pHead;
+}
+
+void CMemRing::ReleaseIndex(int nIdx)
+{
+	EnterCriticalSection(&m_hMemSafe);
+	if (nIdx < m_apMemory.size())
+		m_apMemory[nIdx].nCount -= 1;
+	LeaveCriticalSection(&m_hMemSafe);
+}
+
+void *CMemRing::GetFree(int *pnIdx)
+{
+	void *pHead = NULL;
+	SRingItem sRingItem;
+	EnterCriticalSection(&m_hMemSafe);
+	for (int i = 0; i < m_apMemory.size(); ++i)
+	{
+		if (!m_apMemory[i].nCount)
+		{
+			*pnIdx = i;
+			pHead = m_apMemory[i].pMemory;
+			break;
+		}
+	}
+
+	if (!pHead && m_apMemory.size() < m_nMaxElems)		// we need to create new memory
+	{
+		sRingItem.nCount = 0;
+		pHead = sRingItem.pMemory = malloc(m_llSize);
+		*pnIdx = m_apMemory.size();
+		m_apMemory.push_back(sRingItem);
+	}
+	LeaveCriticalSection(&m_hMemSafe);
+	return pHead;
+}
+
+
 //CMemPool::CMemPool()
 //{
 //	m_aMemory.clear();
