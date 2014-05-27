@@ -672,9 +672,9 @@ CChannelFTDI::CChannelFTDI(SChanInitFTDI &sChanInit, SBase* pInit, DWORD dwSize,
 	{
 		dwBaud= min(m_aDevices[i]->m_sInitFT.dwMaxBaud, dwBaud);
 	}
-	m_sChanInit.dwBaud = dwBaud;
+	m_sChanInit.dwBaud = 0;
 	if (sChanInit.dwBaud)
-		m_sChanInit.dwBaud = min(m_sChanInit.dwBaud, sChanInit.dwBaud);
+		m_sChanInit.dwBaud = min(dwBaud, sChanInit.dwBaud);
 	m_sChanInit.dwBuffIn = dwBuffSizeRead + MIN_BUFF_IN;
 	m_sChanInit.dwBuffOut = dwBuffSizeWrite + MIN_BUFF_OUT;
 
@@ -898,6 +898,8 @@ DWORD CChannelFTDI::ThreadProc()
 			{
 				lpfFT_Purge(m_ftHandle, FT_PURGE_RX|FT_PURGE_TX);
 				lpfFT_SetBitMode(m_ftHandle, ucOutput, ucMode);
+				if (m_sChanInit.dwBaud)
+					dwBaud = min(m_sChanInit.dwBaud, dwBaud);
 				lpfFT_SetBaudRate(m_ftHandle, dwBaud);
 			}
 			if (!bUpdating)	// read/write next so that we go active or inactive
