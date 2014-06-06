@@ -7,7 +7,7 @@
 #include <string>
 #include <Windows.h>	// we need to include windows to include ftd2xx.h
 
-#define	BARST_VERSION		20000	// it's 2.00.00
+#define	BARST_VERSION		21000	// it's 2.10.00
 
 #define MIN_PIPE_BUF_SIZE	20	// smallest named pipe buffer possible
 #define	DEVICE_NAME_SIZE	8	// size of the unique internal name given for all devices/managers
