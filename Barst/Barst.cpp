@@ -268,7 +268,9 @@ int _tmain(int argc, _TCHAR* argv[])
 {
 	InitializeQueueLimit();
 	g_cTimer.ResetTimer();
+#ifndef _DEBUG
 	ShowWindow(GetConsoleWindow(), SW_HIDE);
+#endif
 	CMainManager* pMainManager= new CMainManager;
 	int nRes= pMainManager->Run(argc, argv);	// program sits here until stopped
 	delete pMainManager;
