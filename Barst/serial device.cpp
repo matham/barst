@@ -218,7 +218,7 @@ CChannelSerial::CChannelSerial(const TCHAR szPipe[], int nChan, SChanInitSerial 
 		m_asRPackets(m_hReadEvent)
 {
 	m_bError= true;
-	int nRes= 0;
+	nError = 0;
 	m_pcComm= NULL;
 	m_hStopEvent= NULL;
 	m_acReadBuffer= NULL;
@@ -252,7 +252,7 @@ CChannelSerial::CChannelSerial(const TCHAR szPipe[], int nChan, SChanInitSerial 
 	m_hPort= CreateFile(csName.c_str(), GENERIC_READ|GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
 	if (m_hPort == INVALID_HANDLE_VALUE || !m_hPort)
 	{
-		nRes= WIN_ERROR(GetLastError(), nRes);
+		nError= WIN_ERROR(GetLastError(), nError);
 		return;
 	}
 	DCB sDcb;
@@ -260,7 +260,7 @@ CChannelSerial::CChannelSerial(const TCHAR szPipe[], int nChan, SChanInitSerial 
 	sDcb.DCBlength= sizeof(DCB);
 	if (!GetCommState(m_hPort, &sDcb))
 	{
-		nRes= WIN_ERROR(GetLastError(), nRes);
+		nError= WIN_ERROR(GetLastError(), nError);
 		return;
 	}
 	sDcb.BaudRate= m_sChanInit.dwBaudRate;
@@ -277,17 +277,17 @@ CChannelSerial::CChannelSerial(const TCHAR szPipe[], int nChan, SChanInitSerial 
 	sDcb.XoffLim= 1024;
 	if (!SetCommState(m_hPort, &sDcb))
 	{
-		nRes= WIN_ERROR(GetLastError(), nRes);
+		nError= WIN_ERROR(GetLastError(), nError);
 		return;
 	}
 	if (!SetCommMask(m_hPort, EV_RXCHAR))
 	{
-		nRes= WIN_ERROR(GetLastError(), nRes);
+		nError= WIN_ERROR(GetLastError(), nError);
 		return;
 	}
 	if (!GetCommTimeouts(m_hPort, &m_sTimeouts))
 	{
-		nRes= WIN_ERROR(GetLastError(), nRes);
+		nError= WIN_ERROR(GetLastError(), nError);
 		return;
 	}
 	COMMTIMEOUTS sTimeouts;
@@ -298,7 +298,7 @@ CChannelSerial::CChannelSerial(const TCHAR szPipe[], int nChan, SChanInitSerial 
 	sTimeouts.WriteTotalTimeoutConstant = 0;
 	if (!SetCommTimeouts(m_hPort, &sTimeouts))
 	{
-		nRes= WIN_ERROR(GetLastError(), nRes);
+		nError= WIN_ERROR(GetLastError(), nError);
 		return;
 	}
 	
