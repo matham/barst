@@ -451,10 +451,12 @@ DWORD CChannelMCDAQ::ThreadProc()
 			sBaseOut.sBaseIn.nError = MCDAQ_ERROR(lpf_cbDOut(m_usChan, AUXPORT,
 				(psPacket->psData->usBitSelect & psPacket->psData->usValue) |
 				(~psPacket->psData->usBitSelect & m_usLastWrite)), sBaseOut.sBaseIn.nError);
-			sBaseOut.dDouble= g_cTimer.Seconds();
-			sData.dwSize= sizeof(SBaseOut);
-			sBaseOut.sBaseIn.dwSize= sData.dwSize;
-			SBaseOut* pBase= (SBaseOut*)m_pcMemPool->PoolAcquire(sData.dwSize);
+			m_usLastWrite = ((psPacket->psData->usBitSelect & psPacket->psData->usValue) | 
+				(~psPacket->psData->usBitSelect & m_usLastWrite));
+			sBaseOut.dDouble = g_cTimer.Seconds();
+			sData.dwSize = sizeof(SBaseOut);
+			sBaseOut.sBaseIn.dwSize = sData.dwSize;
+			SBaseOut* pBase = (SBaseOut*)m_pcMemPool->PoolAcquire(sData.dwSize);
 			if (pBase)
 			{
 				sData.pHead= pBase;
