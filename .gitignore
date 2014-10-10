@@ -6,4 +6,4 @@ x64
 ipch
 *.sdf
 *.opensdf
-docs\build
+docs/build
