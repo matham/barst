@@ -1,9 +1,9 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2013
+VisualStudioVersion = 12.0.30723.0
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Barst", "Barst\Barst.vcxproj", "{414B1F49-A657-47E6-B252-B9841076C023}"
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Barst DLL", "Barst DLL\Barst DLL.vcxproj", "{8EC1B652-4603-4F59-8D31-80D9E6FF50A7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,13 +21,6 @@ Global
 		{414B1F49-A657-47E6-B252-B9841076C023}.Release|Win32.Build.0 = Release|Win32
 		{414B1F49-A657-47E6-B252-B9841076C023}.Release|x64.ActiveCfg = Release|x64
 		{414B1F49-A657-47E6-B252-B9841076C023}.Release|x64.Build.0 = Release|x64
-		{8EC1B652-4603-4F59-8D31-80D9E6FF50A7}.Debug|Win32.ActiveCfg = Debug|Win32
-		{8EC1B652-4603-4F59-8D31-80D9E6FF50A7}.Debug|Win32.Build.0 = Debug|Win32
-		{8EC1B652-4603-4F59-8D31-80D9E6FF50A7}.Debug|x64.ActiveCfg = Debug|x64
-		{8EC1B652-4603-4F59-8D31-80D9E6FF50A7}.Debug|x64.Build.0 = Debug|x64
-		{8EC1B652-4603-4F59-8D31-80D9E6FF50A7}.Release|Win32.ActiveCfg = Release|Win32
-		{8EC1B652-4603-4F59-8D31-80D9E6FF50A7}.Release|Win32.Build.0 = Release|Win32
-		{8EC1B652-4603-4F59-8D31-80D9E6FF50A7}.Release|x64.ActiveCfg = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
