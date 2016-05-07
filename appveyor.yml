@@ -19,6 +19,7 @@ build:
 after_build:
 - ps: >-
     mkdir $env:DEPLOY_DIR
+
     if ($env:PLATFORM -eq "x64") {
         move "$env:APPVEYOR_BUILD_FOLDER\x64\Release\Barst.exe" "$env:DEPLOY_DIR\barst64.exe"
     } else {
