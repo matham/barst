@@ -2,7 +2,6 @@ version: 1.0.{build}
 branches:
   only:
   - master
-skip_non_tags: true
 environment:
   DEPLOY_DIR: deploy
   access_token:
@@ -29,13 +28,6 @@ after_build:
 artifacts:
 - path: $(DEPLOY_DIR)\barst*.exe
   name: barst
-deploy:
-- provider: GitHub
-  tag: $(APPVEYOR_REPO_TAG_NAME)
-  auth_token:
-    secure: H8F1UMqC4QixM9NbnHewuineXTu860e3WhkpgMzui6xQmCv2qyXd4BDonVrrW5Iv
-  artifact: barst
-  draft: true
 on_success:
 - ps: >-
     function Check-Error
