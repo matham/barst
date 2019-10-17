@@ -10,7 +10,7 @@ jobs:
     - name: Compile barst
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\Tools\VsDevCmd.bat"
-        cd %RUNNER_WORKSPACE%
+        dir
         devenv /upgrade Barst.sln
         msbuild Barst.sln /p:Configuration=Release;Platform=x64
         msbuild Barst.sln /p:Configuration=Release;Platform=Win32
