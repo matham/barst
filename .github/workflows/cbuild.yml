@@ -9,9 +9,9 @@ jobs:
     - uses: actions/checkout@v1
     - name: Compile barst
       run: |
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\IDE\devenv.exe" Barst.sln /Upgrade
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\MSBuild\msbuild.exe" Barst.sln /p:Configuration=Release;Platform=x64
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\MSBuild\msbuild.exe" Barst.sln /p:Configuration=Release;Platform=Win32
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise"\Common7\IDE\devenv.exe /Upgrade Barst.sln
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise"\MSBuild\Current\Bin\MSBuild\msbuild.exe Barst.sln /p:Configuration=Release;Platform=x64
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise"\MSBuild\Current\Bin\MSBuild\msbuild.exe Barst.sln /p:Configuration=Release;Platform=Win32
     - name: Upload x86
       uses: actions/upload-artifact@master
       with:
