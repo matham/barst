@@ -10,10 +10,17 @@ jobs:
     - name: Compile barst
       shell: pwsh
       run: |
-        set $env:PATH="$env:PATH;C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\MSBuild"
-        ls "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise"
-        echo ${env:PATH}
-        msbuild
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\IDE\devenv.exe" /Upgrade Barst.sln
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\MSBuild\msbuild.exe" Barst.sln /p:Configuration=Release;Platform=x64
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\MSBuild\msbuild.exe" Barst.sln /p:Configuration=Release;Platform=Win32
+    - name: Upload artifacts
+      uses: actions/upload-artifact@master
+      with:
+        name: barst.exe
+        path: Release/Barst.exe
+      with:
+        name: barst_x64.exe
+        path: x64/Release/Barst.exe
 
   docs:
     runs-on: ubuntu-18.04
