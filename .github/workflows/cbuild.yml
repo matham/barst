@@ -13,11 +13,13 @@ jobs:
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\IDE\devenv.exe" /Upgrade Barst.sln
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\MSBuild\msbuild.exe" Barst.sln /p:Configuration=Release;Platform=x64
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\MSBuild\msbuild.exe" Barst.sln /p:Configuration=Release;Platform=Win32
-    - name: Upload artifacts
+    - name: Upload x86
       uses: actions/upload-artifact@master
       with:
         name: barst.exe
         path: Release/Barst.exe
+    - name: Upload x64
+      uses: actions/upload-artifact@master
       with:
         name: barst_x64.exe
         path: x64/Release/Barst.exe
