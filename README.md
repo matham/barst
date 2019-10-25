@@ -17,7 +17,7 @@ these dlls needs to be present and installed on the system before
 specific devices can be supported.
 
 Usage
-=====
+-----
 
 Users typically instantiate a server instance from a batch file with e.g.
 
@@ -28,7 +28,7 @@ the client API over the provided pipe.
 
 
 Architecture
-============
+------------
 
 Each device supported by the server requires that a ``CManager`` and ``CDevice``
 interface to be implemented. This defines the operations supported by the device.
@@ -45,10 +45,10 @@ own thread.
 
 For reading data from the device, there are generally two options:
 
-# Read the device and send back data to the client upon request.
-# The server contentiously reads data from the device and buffers it. It also
-  contentiously sends the data it read to the client who initiated the read
-  request.
+#. Read the device and send back data to the client upon request.
+#. The server contentiously reads data from the device and buffers it. It also
+   contentiously sends the data it read to the client who initiated the read
+   request.
 
 Clients are responsible for closing the device when not needed anymore.
 
